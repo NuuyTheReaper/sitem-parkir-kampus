@@ -1,16 +1,48 @@
+"""
+IoT Integration Router — Dual Validation Gate System
+
+Endpoint-endpoint untuk komunikasi antara:
+  - Mikrokontroler ESP32 (RFID reader + servo control)
+  - ML Service (YOLOv8 + OCR plate detection)
+  - Petugas Dashboard (WebSocket live monitor)
+
+Alur Validasi Ganda:
+  1. ESP32 tap RFID → kirim UID ke backend
+  2. Kamera capture → ML detect plate → kirim ke backend
+  3. Backend: normalize + compare plate DB vs ML
+  4. Backend kirim response → ESP32 buka/tutup gerbang
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 import asyncio
+import logging
+
 from core.security import get_petugas
+from core.plate_validator import normalize_plate, validate_plate_match, find_matching_vehicle
 
 import models
 from schemas.parking import GateScanRequest, GateScanResponse
+from schemas.ml import (
+    MLPlateDetectionRequest,
+    MLPlateDetectionResponse,
+    DualValidationRequest,
+    DualValidationResponse,
+)
 from database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/gate", tags=["IoT Integrations & WebSockets"])
 
-# ConnectionManager manages a pool of WebSockets connected from the Petugas Live Monitor
+
+# ═══════════════════════════════════════════════════════════════════
+#  WebSocket Connection Managers
+# ═══════════════════════════════════════════════════════════════════
+
 class ConnectionManager:
+    """Manages WebSocket connections for the Petugas Live Monitor."""
     def __init__(self):
         self.active_connections: list[WebSocket] = []
 
@@ -31,7 +63,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# ── Petugas notification channel ────────────────────────────
+
 class PetugasNotificationManager:
     """Separate WebSocket channel for real-time notifications to petugas."""
     def __init__(self):
@@ -58,6 +90,16 @@ class PetugasNotificationManager:
 
 petugas_notifier = PetugasNotificationManager()
 
+
+# Temporary storage for ML plate detections per gate (in production, use Redis)
+# Format: {"GATE_MASUK_1": {"plate": "G5090DB", "confidence": 0.95, "timestamp": ...}}
+_ml_plate_buffer: dict[str, dict] = {}
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  WebSocket Endpoints
+# ═══════════════════════════════════════════════════════════════════
+
 @router.websocket("/monitor/live")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -68,6 +110,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
 
 @router.websocket("/petugas/notifications")
 async def petugas_notification_ws(websocket: WebSocket):
@@ -81,12 +124,292 @@ async def petugas_notification_ws(websocket: WebSocket):
     except WebSocketDisconnect:
         petugas_notifier.disconnect(websocket)
 
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINT 1: ML Plate Detection Submission
+#  Dipanggil oleh ML Service (YOLOv8 + OCR) setelah proses frame kamera
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/ml/plate-detect", response_model=MLPlateDetectionResponse)
+async def receive_ml_plate_detection(request: MLPlateDetectionRequest):
+    """
+    Endpoint untuk ML Service mengirim hasil deteksi plat nomor.
+    
+    ML Service (YOLOv8 + EasyOCR) mengirim data plat yang terdeteksi
+    dari frame kamera secara real-time. Data disimpan di buffer
+    menunggu request RFID dari ESP32.
+    
+    Alur:
+    1. Kamera capture frame → ML proses → kirim hasil ke endpoint ini
+    2. Data disimpan di _ml_plate_buffer[gate_id]
+    3. Ketika ESP32 tap RFID, backend ambil data dari buffer
+    """
+    _ml_plate_buffer[request.gate_id] = {
+        "plate": request.detected_plate,
+        "confidence": request.confidence,
+        "image_path": request.image_path,
+        "timestamp": request.timestamp or datetime.now(timezone.utc),
+    }
+    
+    logger.info(
+        f"[ML] Plate detected at {request.gate_id}: "
+        f"{request.detected_plate} (conf: {request.confidence:.2f})"
+    )
+    
+    return MLPlateDetectionResponse(
+        status="received",
+        message=f"Plate '{request.detected_plate}' stored for gate {request.gate_id}",
+        gate_id=request.gate_id,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINT 2: Dual Validation (RFID + ML)  ★ ENDPOINT UTAMA ★
+#  Dipanggil oleh ESP32 setelah tap RFID
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/dual-validate", response_model=DualValidationResponse)
+async def dual_validation_gate(
+    request: DualValidationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    ★ ENDPOINT VALIDASI GANDA ★
+    
+    Endpoint utama yang menjalankan alur validasi ganda:
+    
+    STEP 1 — Cek RFID di Database
+        Cari user berdasarkan rfid_uid → ambil data mahasiswa & kendaraan terdaftar
+        
+    STEP 2 — Normalisasi Plat Nomor  
+        DB:  "G 5090 DB" → "G5090DB"
+        ML:  "g-5090-db" → "G5090DB"
+        
+    STEP 3 — Pencocokan (Match)
+        Bandingkan normalized plate DB == normalized plate ML
+        
+    STEP 4 — Eksekusi
+        Cocok  → open_gate + catat log masuk/keluar
+        Gagal  → keep_closed + buzzer
+    """
+    
+    # ─── STEP 1: Cek RFID di Database ───
+    user = (
+        db.query(models.User)
+        .filter(models.User.rfid_uid == request.rfid_uid)
+        .first()
+    )
+    
+    if not user:
+        # RFID tidak terdaftar
+        await manager.broadcast({
+            "type": "error",
+            "message": "❌ Kartu RFID tidak terdaftar dalam sistem.",
+            "rfid": request.rfid_uid,
+            "plate": request.detected_plate,
+            "gate": request.gate_id,
+        })
+        logger.warning(f"[GATE] Unregistered RFID: {request.rfid_uid}")
+        return DualValidationResponse(
+            action="keep_closed",
+            message="RFID tidak terdaftar",
+            validation_detail="UID kartu tidak ditemukan di database"
+        )
+    
+    # Cek apakah user di-flag (blacklisted)
+    if user.is_flagged:
+        await manager.broadcast({
+            "type": "error",
+            "message": f"⚠️ Mahasiswa {user.nama} di-FLAG: {user.flag_reason}",
+            "rfid": request.rfid_uid,
+            "plate": request.detected_plate,
+            "user": user.nama,
+        })
+        return DualValidationResponse(
+            action="keep_closed",
+            message=f"Akses ditolak — akun di-flag: {user.flag_reason}",
+            student_name=user.nama,
+            validation_detail="User flagged/blacklisted"
+        )
+    
+    # ─── STEP 2 & 3: Normalisasi + Pencocokan Plat ───
+    # Ambil hanya kendaraan yang sudah disetujui (status_validasi == disetujui)
+    approved_vehicles = [
+        v for v in user.vehicles
+        if v.status_validasi == models.ValidationStatusEnum.disetujui
+    ]
+    
+    if not approved_vehicles:
+        await manager.broadcast({
+            "type": "error",
+            "message": f"Mahasiswa {user.nama}: belum ada kendaraan yang disetujui.",
+            "user": user.nama,
+            "plate": request.detected_plate,
+        })
+        return DualValidationResponse(
+            action="keep_closed",
+            message="Tidak ada kendaraan tervalidasi untuk user ini",
+            student_name=user.nama,
+            validation_detail="Semua kendaraan masih pending/ditolak"
+        )
+    
+    # Gunakan find_matching_vehicle dengan normalisasi string
+    target_vehicle = find_matching_vehicle(approved_vehicles, request.detected_plate)
+    
+    if not target_vehicle:
+        # Log detail pencocokan untuk debugging
+        db_plates = [v.plat_nomor for v in approved_vehicles]
+        norm_db = [normalize_plate(p) for p in db_plates]
+        norm_ml = normalize_plate(request.detected_plate)
+        
+        validation_result = validate_plate_match(
+            plate_from_db=approved_vehicles[0].plat_nomor,
+            plate_from_ml=request.detected_plate,
+            confidence=request.ml_confidence,
+        )
+        
+        await manager.broadcast({
+            "type": "error",
+            "message": (
+                f"❌ Validasi Ganda GAGAL — {user.nama}\n"
+                f"  Plat DB: {db_plates} (norm: {norm_db})\n"
+                f"  Plat ML: '{request.detected_plate}' (norm: '{norm_ml}')\n"
+                f"  Confidence: {request.ml_confidence:.2f}"
+            ),
+            "user": user.nama,
+            "plate": request.detected_plate,
+        })
+        
+        logger.warning(
+            f"[GATE] Plate mismatch for {user.nama}: "
+            f"DB={norm_db}, ML='{norm_ml}', conf={request.ml_confidence}"
+        )
+        
+        return DualValidationResponse(
+            action="keep_closed",
+            message="Plat nomor tidak cocok dengan data terdaftar",
+            student_name=user.nama,
+            plate_number=request.detected_plate,
+            validation_detail=validation_result["reason"]
+        )
+    
+    # ─── Cek confidence ML ───
+    if request.ml_confidence < 0.70:
+        await manager.broadcast({
+            "type": "error",
+            "message": (
+                f"⚠️ Confidence ML rendah ({request.ml_confidence:.0%}) "
+                f"untuk {user.nama} — butuh verifikasi manual"
+            ),
+            "user": user.nama,
+            "plate": request.detected_plate,
+        })
+        return DualValidationResponse(
+            action="keep_closed",
+            message=f"Confidence ML terlalu rendah: {request.ml_confidence:.0%}",
+            student_name=user.nama,
+            plate_number=target_vehicle.plat_nomor,
+            validation_detail=f"ML confidence {request.ml_confidence:.2f} < 0.70 threshold"
+        )
+    
+    # ─── STEP 4: Validasi Berhasil → Log & Buka Gerbang ───
+    
+    # Tentukan jenis aktivitas (masuk/keluar)
+    gate_type = request.gate_type
+    if gate_type not in ["masuk", "keluar"]:
+        raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
+    
+    # Cek duplikasi: jika gate_type masuk, pastikan user belum di dalam
+    # Jika gate_type keluar, pastikan user sudah di dalam
+    last_log = (
+        db.query(models.ParkingLog)
+        .filter(
+            models.ParkingLog.user_id == user.id,
+            models.ParkingLog.status_akses == models.AccessStatusEnum.otomatis,
+        )
+        .order_by(models.ParkingLog.waktu.desc())
+        .first()
+    )
+    
+    if last_log:
+        if gate_type == "masuk" and last_log.jenis_aktivitas == models.ActivityTypeEnum.masuk:
+            return DualValidationResponse(
+                action="keep_closed",
+                message="Mahasiswa sudah tercatat di dalam area parkir",
+                student_name=user.nama,
+                plate_number=target_vehicle.plat_nomor,
+                validation_detail="Duplikasi entry — belum ada log keluar"
+            )
+        elif gate_type == "keluar" and last_log.jenis_aktivitas == models.ActivityTypeEnum.keluar:
+            return DualValidationResponse(
+                action="keep_closed",
+                message="Mahasiswa sudah tercatat keluar dari area parkir",
+                student_name=user.nama,
+                plate_number=target_vehicle.plat_nomor,
+                validation_detail="Duplikasi exit — belum ada log masuk"
+            )
+    
+    # Buat log parkir
+    log = models.ParkingLog(
+        user_id=user.id,
+        vehicle_id=target_vehicle.id,
+        jenis_aktivitas=gate_type,
+        status_akses=models.AccessStatusEnum.otomatis,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    
+    # Broadcast ke Live Monitor (Petugas Dashboard)
+    validation_detail = validate_plate_match(
+        target_vehicle.plat_nomor,
+        request.detected_plate,
+        request.ml_confidence,
+    )
+    
+    action_label = "MASUK" if gate_type == "masuk" else "KELUAR"
+    await manager.broadcast({
+        "type": "success",
+        "message": (
+            f"✅ Validasi Ganda BERHASIL — {action_label}\n"
+            f"  Mahasiswa: {user.nama}\n"
+            f"  Plat: {target_vehicle.plat_nomor}\n"
+            f"  Confidence ML: {request.ml_confidence:.0%}"
+        ),
+        "user": user.nama,
+        "plate": target_vehicle.plat_nomor,
+        "time": log.waktu.isoformat(),
+        "gate": request.gate_id,
+    })
+    
+    logger.info(
+        f"[GATE] ✅ {action_label} validated for {user.nama} "
+        f"plate={target_vehicle.plat_nomor} gate={request.gate_id}"
+    )
+    
+    return DualValidationResponse(
+        action="open_gate",
+        message=f"Akses {gate_type} diizinkan",
+        student_name=user.nama,
+        plate_number=target_vehicle.plat_nomor,
+        validation_detail=validation_detail["reason"]
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINT LEGACY: /scan (backward compatible dengan IoT simulator lama)
+# ═══════════════════════════════════════════════════════════════════
+
 @router.post("/scan", response_model=GateScanResponse)
 async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)):
+    """
+    Legacy endpoint — kompatibel dengan iot_simulator.py yang sudah ada.
+    Internally redirects to dual validation logic.
+    """
     # 1. Find User by RFID tag read
-    rfid_card = db.query(models.RFIDCard).filter(models.RFIDCard.rfid_uid == scan.rfid_uid).first()
+    user = db.query(models.User).filter(models.User.rfid_uid == scan.rfid_uid).first()
     
-    if not rfid_card:
+    if not user:
         await manager.broadcast({
             "type": "error",
             "message": "Unregistered RFID card scanned.",
@@ -94,15 +417,14 @@ async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)
             "plate": scan.plat_nomor_ml
         })
         return {"action": "keep_closed", "message": "RFID not found"}
-
-    user = rfid_card.user
     
-    # 2. Check if scanned plate matches an APPROVED vehicle belonging to this user
-    target_vehicle = None
-    for vehicle in user.vehicles:
-        if vehicle.plat_nomor == scan.plat_nomor_ml and vehicle.status_validasi == models.ValidationStatusEnum.disetujui:
-            target_vehicle = vehicle
-            break
+    # 2. Check if scanned plate matches an APPROVED vehicle (WITH normalization)
+    approved_vehicles = [
+        v for v in user.vehicles
+        if v.status_validasi == models.ValidationStatusEnum.disetujui
+    ]
+    
+    target_vehicle = find_matching_vehicle(approved_vehicles, scan.plat_nomor_ml)
             
     if not target_vehicle:
         await manager.broadcast({
@@ -135,6 +457,11 @@ async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)
     
     return {"action": "open_gate", "message": "Access granted"}
 
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINT: Emergency Gate Override (Petugas Manual)
+# ═══════════════════════════════════════════════════════════════════
+
 @router.post("/emergency-action")
 async def emergency_gate_action(gate: str, reason: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_petugas)):
     """Petugas manual override to open gate in emergency."""
@@ -163,6 +490,11 @@ async def emergency_gate_action(gate: str, reason: str, db: Session = Depends(ge
     db.commit()
     
     return {"status": "success", "message": f"Gate {gate} dibuka manual"}
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINT: Parking Capacity Stats
+# ═══════════════════════════════════════════════════════════════════
 
 @router.get("/stats/capacity")
 def get_parking_capacity(db: Session = Depends(get_db)):

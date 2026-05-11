@@ -43,6 +43,8 @@ def get_all_mahasiswa(db: Session = Depends(get_db)):
 def create_mahasiswa(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.nim_npp == user.nim_npp).first():
         raise HTTPException(status_code=400, detail="NIM already registered")
+    if user.rfid_uid and db.query(models.User).filter(models.User.rfid_uid == user.rfid_uid).first():
+        raise HTTPException(status_code=400, detail="RFID already registered")
         
     db_user = models.User(
         nim_npp=user.nim_npp,
@@ -71,7 +73,10 @@ def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = Depend
     if user_update.nama: db_user.nama = user_update.nama
     if user_update.prodi_id is not None: db_user.prodi_id = user_update.prodi_id
     if user_update.angkatan is not None: db_user.angkatan = user_update.angkatan
-    if user_update.rfid_uid: db_user.rfid_uid = user_update.rfid_uid
+    if user_update.rfid_uid:
+        if db.query(models.User).filter(models.User.rfid_uid == user_update.rfid_uid, models.User.id != user_id).first():
+            raise HTTPException(status_code=400, detail="RFID already registered")
+        db_user.rfid_uid = user_update.rfid_uid
     if user_update.password: db_user.password_hash = get_password_hash(user_update.password)
     
     db.commit()

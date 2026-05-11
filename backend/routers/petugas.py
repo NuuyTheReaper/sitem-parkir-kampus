@@ -170,36 +170,3 @@ def get_activity_chart(db: Session = Depends(get_db)):
             "keluar": out_count
         })
     return results
-
-from pydantic import BaseModel
-class RFIDProvisionRequest(BaseModel):
-    nim: str
-    rfid_uid: str
-
-@router.post("/rfid/provision")
-def provision_rfid(req: RFIDProvisionRequest, db: Session = Depends(get_db)):
-    # Find user by NIM
-    user = db.query(models.User).filter(models.User.nim_npp == req.nim).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Mahasiswa dengan NIM tersebut tidak ditemukan")
-        
-    # Check if RFID is already assigned to someone else
-    existing_card = db.query(models.RFIDCard).filter(models.RFIDCard.rfid_uid == req.rfid_uid).first()
-    if existing_card:
-        if existing_card.user_id == user.id:
-            return {"status": "success", "message": "Kartu RFID ini sudah tertaut pada mahasiswa tersebut"}
-        raise HTTPException(status_code=400, detail="Kartu RFID ini sudah terdaftar untuk pengguna lain")
-        
-    # Check if User already has an RFID
-    if user.rfid_uid and user.rfid_uid != req.rfid_uid:
-        # We can either replace it or just let them have multiple. Let's replace the main one for simplicity.
-        pass
-        
-    user.rfid_uid = req.rfid_uid
-    
-    # Also add to RFIDCard table
-    new_card = models.RFIDCard(rfid_uid=req.rfid_uid, user_id=user.id)
-    db.add(new_card)
-    
-    db.commit()
-    return {"status": "success", "message": f"Kartu RFID berhasil ditautkan ke {user.nama}"}

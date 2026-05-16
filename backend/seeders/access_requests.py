@@ -9,40 +9,34 @@ from .utils import approved_vehicles
 
 def seed_access_requests(db, target_requests):
     target_requests = min(target_requests, MAX_ACCESS_REQUESTS)
-    current_requests = db.query(models.AccessRequest).count()
-    if current_requests >= target_requests:
+    db.query(models.AccessRequest).delete(synchronize_session=False)
+    db.commit()
+
+    if target_requests <= 0:
         return 0
 
     vehicles = approved_vehicles(db)
     if not vehicles:
         return 0
 
-    used_user_ids = {
-        row[0]
-        for row in db.query(models.AccessRequest.user_id)
-        .filter(models.AccessRequest.status == models.AccessRequestStatusEnum.pending)
-        .all()
-    }
-
-    rng = random.Random(RANDOM_SEED + current_requests + 99)
+    rng = random.Random(RANDOM_SEED + 99)
     now = datetime.now(timezone.utc)
-    to_create = target_requests - current_requests
     created = 0
+    used_user_ids = set()
 
     for vehicle in vehicles:
-        if created >= to_create:
+        if created >= target_requests:
             break
         if vehicle.user_id in used_user_ids:
             continue
 
-        request_number = current_requests + created
         db.add(
             models.AccessRequest(
                 user_id=vehicle.user_id,
                 vehicle_id=vehicle.id,
                 jenis_aktivitas=(
                     models.ActivityTypeEnum.masuk
-                    if request_number % 2 == 0
+                    if created % 2 == 0
                     else models.ActivityTypeEnum.keluar
                 ),
                 status=models.AccessRequestStatusEnum.pending,

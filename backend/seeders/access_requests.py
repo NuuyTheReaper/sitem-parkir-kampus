@@ -17,7 +17,7 @@ def seed_access_requests(db, target_requests):
     if not vehicles:
         return 0
 
-    existing_pending_user_ids = {
+    used_user_ids = {
         row[0]
         for row in db.query(models.AccessRequest.user_id)
         .filter(models.AccessRequest.status == models.AccessRequestStatusEnum.pending)
@@ -29,20 +29,20 @@ def seed_access_requests(db, target_requests):
     to_create = target_requests - current_requests
     created = 0
 
-    pending_quota = min(int(to_create * 0.65), len(vehicles))
     for vehicle in vehicles:
-        if created >= pending_quota:
+        if created >= to_create:
             break
-        if vehicle.user_id in existing_pending_user_ids:
+        if vehicle.user_id in used_user_ids:
             continue
 
+        request_number = current_requests + created
         db.add(
             models.AccessRequest(
                 user_id=vehicle.user_id,
                 vehicle_id=vehicle.id,
                 jenis_aktivitas=(
                     models.ActivityTypeEnum.masuk
-                    if created % 2 == 0
+                    if request_number % 2 == 0
                     else models.ActivityTypeEnum.keluar
                 ),
                 status=models.AccessRequestStatusEnum.pending,
@@ -52,46 +52,8 @@ def seed_access_requests(db, target_requests):
                 ),
             )
         )
-        existing_pending_user_ids.add(vehicle.user_id)
+        used_user_ids.add(vehicle.user_id)
         created += 1
-
-    while created < to_create:
-        vehicle = vehicles[(current_requests + created) % len(vehicles)]
-        request_time = now - timedelta(
-            days=rng.randint(0, 10),
-            hours=rng.randint(1, 18),
-            minutes=rng.randint(0, 59),
-        )
-        approved = rng.random() > 0.28
-        status = (
-            models.AccessRequestStatusEnum.disetujui
-            if approved
-            else models.AccessRequestStatusEnum.ditolak
-        )
-
-        db.add(
-            models.AccessRequest(
-                user_id=vehicle.user_id,
-                vehicle_id=vehicle.id,
-                jenis_aktivitas=(
-                    models.ActivityTypeEnum.masuk
-                    if rng.random() > 0.45
-                    else models.ActivityTypeEnum.keluar
-                ),
-                status=status,
-                waktu_request=request_time,
-                waktu_respon=request_time + timedelta(minutes=rng.randint(1, 9)),
-                catatan=(
-                    None
-                    if approved
-                    else "Data akses perlu diverifikasi ulang oleh petugas"
-                ),
-            )
-        )
-        created += 1
-
-        if created % 200 == 0:
-            db.commit()
 
     db.commit()
     return created

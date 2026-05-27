@@ -18,13 +18,17 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import asyncio
 import logging
+import httpx
 
 from core.security import get_petugas
+from core.config import settings
 from core.plate_validator import normalize_plate, validate_plate_match, find_matching_vehicle
 
 import models
 from schemas.parking import GateScanRequest, GateScanResponse
 from schemas.ml import (
+    ANPRScanResponse,
+    CaptureValidationRequest,
     MLPlateDetectionRequest,
     MLPlateDetectionResponse,
     DualValidationRequest,
@@ -173,6 +177,88 @@ async def dual_validation_gate(
     request: DualValidationRequest,
     db: Session = Depends(get_db)
 ):
+    """
+    Endpoint untuk device/gateway yang sudah punya hasil deteksi plat.
+    """
+    return await _run_dual_validation(request, db)
+
+
+@router.post("/capture-validate", response_model=DualValidationResponse)
+async def capture_and_validate_gate(
+    request: CaptureValidationRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint untuk ESP32/gate controller ketika plat belum tersedia.
+
+    Alur:
+    1. ESP32 kirim RFID + gate_type ke backend.
+    2. Backend meminta ANPR service mengambil frame IP camera dan membaca plat.
+    3. Backend menjalankan validasi ganda memakai RFID + hasil ANPR.
+    4. Response action dikirim balik ke ESP32.
+    """
+    if request.gate_type not in ["masuk", "keluar"]:
+        raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
+
+    try:
+        scan = await _request_anpr_scan(
+            gate_id=request.gate_id or "GATE_DEFAULT",
+            camera_url=request.camera_url,
+        )
+    except HTTPException as exc:
+        await manager.broadcast({
+            "type": "error",
+            "message": f"ANPR gagal membaca kamera: {exc.detail}",
+            "rfid": request.rfid_uid,
+            "gate": request.gate_id,
+        })
+        return DualValidationResponse(
+            action="keep_closed",
+            message="ANPR service gagal membaca plat",
+            validation_detail=str(exc.detail),
+        )
+
+    dual_request = DualValidationRequest(
+        rfid_uid=request.rfid_uid,
+        detected_plate=scan.detected_plate,
+        ml_confidence=scan.confidence,
+        gate_type=request.gate_type,
+        gate_id=scan.gate_id,
+    )
+    return await _run_dual_validation(dual_request, db)
+
+
+async def _request_anpr_scan(gate_id: str, camera_url: str | None = None) -> ANPRScanResponse:
+    """Call the separated ANPR service and normalize connection errors."""
+    base_url = settings.ANPR_SERVICE_URL.rstrip("/")
+    payload = {"gate_id": gate_id}
+    if camera_url:
+        payload["camera_url"] = camera_url
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.ANPR_SCAN_TIMEOUT_SECONDS) as client:
+            response = await client.post(f"{base_url}/api/scan-plate", json=payload)
+            response.raise_for_status()
+            return ANPRScanResponse(**response.json())
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text[:300] if exc.response is not None else str(exc)
+        logger.error("[ANPR] Service returned error for %s: %s", gate_id, detail)
+        raise HTTPException(
+            status_code=502,
+            detail=f"ANPR service error saat scan gate {gate_id}",
+        ) from exc
+    except (httpx.TimeoutException, httpx.RequestError) as exc:
+        logger.error("[ANPR] Service unavailable for %s: %s", gate_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail=f"ANPR service tidak bisa diakses untuk gate {gate_id}",
+        ) from exc
+
+
+async def _run_dual_validation(
+    request: DualValidationRequest,
+    db: Session,
+) -> DualValidationResponse:
     """
     ★ ENDPOINT VALIDASI GANDA ★
     

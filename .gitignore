@@ -2,6 +2,12 @@
 .env
 .env.*
 !.env.example
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+
+# Uploads
+backend/uploads/**/*
+!backend/uploads/**/.gitkeep
 
 # Python
 __pycache__/
@@ -39,6 +45,7 @@ venv.bak/
 .vscode/
 *.swp
 *.swo
+*.bak
 
 # macOS
 .DS_Store
@@ -53,3 +60,6 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 !frontend/lib/
+
+# Agent/Claude workspace config
+.claude/

@@ -1,7 +1,7 @@
 class AppConstants {
-  static const String baseUrl = 'http://43.133.155.101:8088/api/';
-  static const String uploadBaseUrl = 'http://43.133.155.101:8088';
-  static const String wsUrl = 'ws://43.133.155.101:8088/api/gate/monitor/live';
+  static const String baseUrl = 'https://parkirkampus.my.id/api/';
+  static const String uploadBaseUrl = 'https://parkirkampus.my.id';
+  static const String wsUrl = 'wss://parkirkampus.my.id/api/gate/monitor/live';
   static const String wsNotifUrl =
-      'ws://43.133.155.101:8088/api/gate/petugas/notifications';
+      'wss://parkirkampus.my.id/api/gate/petugas/notifications';
 }

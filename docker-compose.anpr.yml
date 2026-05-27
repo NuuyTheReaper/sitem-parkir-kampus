@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      SECRET_KEY: "${SECRET_KEY:-super_secret_jwt_key_here}"
+      ANPR_SERVICE_URL: "http://anpr:5000"
+      ANPR_SCAN_TIMEOUT_SECONDS: "${ANPR_SCAN_TIMEOUT_SECONDS:-15}"
+    depends_on:
+      - anpr
+
+  anpr:
+    build:
+      context: ./anpr-parking-system
+    restart: unless-stopped
+    expose:
+      - "5000"
+    environment:
+      MODEL_PATH: "/app/runs/detect/train-4/weights/best.pt"
+      CAMERA_URL: "${CAMERA_URL:-0}"
+      OCR_LANGS: "${OCR_LANGS:-en}"
+      DETECTION_CONFIDENCE: "${DETECTION_CONFIDENCE:-0.50}"
+      OCR_CONFIDENCE: "${OCR_CONFIDENCE:-0.30}"
+      CAPTURE_WARMUP_FRAMES: "${CAPTURE_WARMUP_FRAMES:-2}"
+      ALLOW_REQUEST_CAMERA_URL: "${ALLOW_REQUEST_CAMERA_URL:-false}"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    mem_limit: "${ANPR_MEM_LIMIT:-4g}"
+    cpus: "${ANPR_CPUS:-1.5}"
+    volumes:
+      - easyocr-cache:/root/.EasyOCR
+
+volumes:
+  easyocr-cache:

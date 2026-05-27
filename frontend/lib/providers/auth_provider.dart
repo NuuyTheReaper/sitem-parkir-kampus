@@ -22,6 +22,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _loadSession();
   }
 
+  String _readDioError(DioException e) {
+    final data = e.response?.data;
+
+    if (data is Map && data['detail'] != null) {
+      return data['detail'].toString();
+    }
+
+    if (data is String && data.trim().isNotEmpty) {
+      return data;
+    }
+
+    return e.message ?? 'Login gagal';
+  }
+
   Future<void> _loadSession() async {
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
@@ -64,8 +78,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           isLoading: false, role: role, user: {'nama': nama, 'nim_npp': nim});
       return true;
     } on DioException catch (e) {
-      state = AuthState(
-          isLoading: false, error: e.response?.data['detail'] ?? e.message);
+      state = AuthState(isLoading: false, error: _readDioError(e));
       return false;
     } catch (e) {
       state = AuthState(isLoading: false, error: e.toString());

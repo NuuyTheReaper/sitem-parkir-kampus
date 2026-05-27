@@ -2,53 +2,58 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // === Color Palette ===
-  static const Color primary = Color(0xFF800000); // Maroon
+  // === Minimalist Color Palette ===
+  static const Color primary = Color(0xFF800000); // Maroon - Primary color
   static const Color maroon = primary; // Backward compatibility
-  static const Color maroonDark = primary;
-  static const Color maroonLight = primary;
-  static const Color maroonSurface = Color(0xFFF9FAFB);
-  static const Color background = Color(0xFFFFFFFF); // Putih bersih
-  static const Color surfaceAccent = Color(0xFFF9FAFB); // Abu-abu sangat muda
-  static const Color bodyText = Colors.black87; // Body text color
+  static const Color maroonDark = Color(0xFF5C0000);
+  static const Color maroonLight = Color(0xFFA63333);
+  static const Color maroonSurface = Color(0xFFFFF5F5); // Very subtle maroon tint
+  static const Color background = Color(0xFFFFFFFF); // Pure white
+  static const Color surfaceAccent = Color(0xFFFAFAFA); // Minimal gray
+  static const Color bodyText = Color(0xFF1F2937); // Softer black
 
-  // Accent & Semantic Colors
+  // Accent & Semantic Colors - Softer palette
   static const Color gold = Color(0xFFD4A843);
   static const Color goldLight = Color(0xFFF5C842);
   static const Color teal = Color(0xFF0EA5E9);
   static const Color tealLight = Color(0xFFE0F2FE);
   static const Color emerald = Color(0xFF10B981);
   static const Color amber = Color(0xFFF59E0B);
-  static const Color slate50 = Color(0xFFF8FAFC);
-  static const Color slate100 = Color(0xFFF1F5F9);
-  static const Color slate200 = Color(0xFFE2E8F0);
-  static const Color slate500 = Color(0xFF64748B);
-  static const Color slate700 = Color(0xFF334155);
-  static const Color slate900 = Color(0xFF0F172A);
+  static const Color slate50 = Color(0xFFFAFAFA);
+  static const Color slate100 = Color(0xFFF5F5F5);
+  static const Color slate200 = Color(0xFFE5E5E5);
+  static const Color slate300 = Color(0xFFD4D4D4);
+  static const Color slate400 = Color(0xFFA3A3A3);
+  static const Color slate500 = Color(0xFF737373);
+  static const Color slate600 = Color(0xFF525252);
+  static const Color slate700 = Color(0xFF404040);
+  static const Color slate800 = Color(0xFF262626);
+  static const Color slate900 = Color(0xFF171717);
 
   static ThemeData get theme {
-    final textTheme = GoogleFonts.plusJakartaSansTextTheme().copyWith(
-      displayLarge: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      displayMedium: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      displaySmall: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      headlineLarge: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      headlineMedium: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      headlineSmall: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      titleLarge: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      titleMedium: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      titleSmall: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800, letterSpacing: -1.0, color: bodyText),
-      bodyLarge: GoogleFonts.plusJakartaSans(color: bodyText),
-      bodyMedium: GoogleFonts.plusJakartaSans(color: bodyText),
-      bodySmall: GoogleFonts.plusJakartaSans(color: bodyText),
+    // Minimalist typography with Inter font
+    final textTheme = GoogleFonts.interTextTheme().copyWith(
+      displayLarge: GoogleFonts.inter(
+          fontWeight: FontWeight.w700, letterSpacing: -1.5, color: bodyText),
+      displayMedium: GoogleFonts.inter(
+          fontWeight: FontWeight.w700, letterSpacing: -1.0, color: bodyText),
+      displaySmall: GoogleFonts.inter(
+          fontWeight: FontWeight.w600, letterSpacing: -0.5, color: bodyText),
+      headlineLarge: GoogleFonts.inter(
+          fontWeight: FontWeight.w700, letterSpacing: -1.0, color: bodyText),
+      headlineMedium: GoogleFonts.inter(
+          fontWeight: FontWeight.w600, letterSpacing: -0.5, color: bodyText),
+      headlineSmall: GoogleFonts.inter(
+          fontWeight: FontWeight.w600, letterSpacing: -0.3, color: bodyText),
+      titleLarge: GoogleFonts.inter(
+          fontWeight: FontWeight.w600, letterSpacing: -0.3, color: bodyText),
+      titleMedium: GoogleFonts.inter(
+          fontWeight: FontWeight.w600, letterSpacing: -0.2, color: bodyText),
+      titleSmall: GoogleFonts.inter(
+          fontWeight: FontWeight.w500, letterSpacing: 0, color: bodyText),
+      bodyLarge: GoogleFonts.inter(color: bodyText, letterSpacing: 0),
+      bodyMedium: GoogleFonts.inter(color: bodyText, letterSpacing: 0),
+      bodySmall: GoogleFonts.inter(color: slate600, letterSpacing: 0),
     );
 
     return ThemeData(
@@ -64,43 +69,47 @@ class AppTheme {
       textTheme: textTheme,
       scaffoldBackgroundColor: background,
 
-      // AppBar
+      // AppBar - Minimalist
       appBarTheme: AppBarTheme(
         backgroundColor: background,
-        foregroundColor: primary,
+        foregroundColor: bodyText,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.plusJakartaSans(
-          color: primary,
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1.0,
+        titleTextStyle: GoogleFonts.inter(
+          color: bodyText,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
         ),
-        iconTheme: const IconThemeData(color: primary),
+        iconTheme: IconThemeData(color: slate700),
       ),
 
-      // Cards
+      // Cards - Clean and minimal
       cardTheme: CardThemeData(
-        color: surfaceAccent,
+        color: background,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
-          side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.0),
+          borderRadius: BorderRadius.circular(16.0),
+          side: BorderSide(color: slate200, width: 1.0),
         ),
         margin: EdgeInsets.zero,
       ),
 
-      // Elevated Button
+      // Elevated Button - Softer, more minimal
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 0,
+          shadowColor: Colors.transparent,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          textStyle: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+          ),
         ),
       ),
 
@@ -110,10 +119,14 @@ class AppTheme {
           backgroundColor: primary,
           foregroundColor: Colors.white,
           elevation: 0,
+          shadowColor: Colors.transparent,
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          textStyle: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+          ),
         ),
       ),
 
@@ -121,45 +134,52 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primary,
-          side: const BorderSide(color: primary, width: 1.5),
+          side: BorderSide(color: slate300, width: 1.5),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          textStyle: GoogleFonts.inter(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+          ),
         ),
       ),
 
-      // Input fields
+      // Input fields - Cleaner look
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surfaceAccent,
+        fillColor: slate50,
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(12.0),
+          borderSide: BorderSide(color: slate200),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(12.0),
+          borderSide: BorderSide(color: slate200),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: primary, width: 2.0),
+          borderRadius: BorderRadius.circular(12.0),
+          borderSide: const BorderSide(color: primary, width: 1.5),
         ),
-        labelStyle: GoogleFonts.plusJakartaSans(color: Colors.black54),
-        hintStyle: GoogleFonts.plusJakartaSans(color: Colors.black38),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12.0),
+          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+        ),
+        labelStyle: GoogleFonts.inter(color: slate600, fontSize: 14),
+        hintStyle: GoogleFonts.inter(color: slate400, fontSize: 14),
       ),
 
-      // Bottom Nav
+      // Bottom Nav - Minimal
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: background,
         selectedItemColor: primary,
-        unselectedItemColor: Colors.black54,
+        unselectedItemColor: slate500,
         selectedLabelStyle:
-            GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800),
+            GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 11),
         unselectedLabelStyle:
-            GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500),
+            GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
         elevation: 0,
         type: BottomNavigationBarType.fixed,
       ),
@@ -169,42 +189,44 @@ class AppTheme {
         backgroundColor: primary,
         foregroundColor: Colors.white,
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
       ),
 
       // Chip
       chipTheme: ChipThemeData(
-        backgroundColor: surfaceAccent,
-        labelStyle: GoogleFonts.plusJakartaSans(
-            color: primary, fontWeight: FontWeight.w600),
-        side: const BorderSide(color: Color(0xFFE5E7EB)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        backgroundColor: slate100,
+        labelStyle: GoogleFonts.inter(
+            color: slate700, fontWeight: FontWeight.w500, fontSize: 13),
+        side: BorderSide(color: slate200),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
 
       // Divider
-      dividerTheme: const DividerThemeData(
-          color: Color(0xFFE5E7EB), thickness: 1, space: 1),
+      dividerTheme: DividerThemeData(
+          color: slate200, thickness: 1, space: 1),
 
       // Dialog
       dialogTheme: DialogThemeData(
         backgroundColor: background,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
         elevation: 0,
-        titleTextStyle: GoogleFonts.plusJakartaSans(
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1.0,
+        titleTextStyle: GoogleFonts.inter(
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
           color: bodyText,
           fontSize: 20,
         ),
-        contentTextStyle: GoogleFonts.plusJakartaSans(color: bodyText),
+        contentTextStyle: GoogleFonts.inter(color: bodyText, fontSize: 15),
       ),
     );
   }
 
+  // Minimalist card styles
   static BoxDecoration get modernCard => BoxDecoration(
-        color: surfaceAccent,
-        borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.0),
+        color: background,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: slate200, width: 1.0),
       );
 
   static BoxDecoration get headerGradient => const BoxDecoration(
@@ -212,9 +234,25 @@ class AppTheme {
       );
 
   static BoxDecoration get glassCard => BoxDecoration(
-        color: surfaceAccent,
-        borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.0),
+        color: background,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: slate200, width: 1.0),
+      );
+
+  // Subtle shadow for elevated elements
+  static List<BoxShadow> get subtleShadow => [
+        BoxShadow(
+          color: slate900.withOpacity(0.04),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ];
+
+  // Minimal card with shadow
+  static BoxDecoration get elevatedCard => BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: subtleShadow,
       );
 
   // Status colors

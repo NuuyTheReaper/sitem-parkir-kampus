@@ -8,7 +8,18 @@ pluginManagement {
             flutterSdkPath
         }
 
-    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+    val flutterGradlePlugin = file("$flutterSdkPath/packages/flutter_tools/gradle")
+    val localFlutterGradlePlugin = file("flutter-gradle-plugin-cache")
+    val sourceStamp = "${flutterGradlePlugin.absolutePath}:${flutterGradlePlugin.resolve("build.gradle.kts").lastModified()}"
+    val stampFile = localFlutterGradlePlugin.resolve(".source-stamp")
+
+    if (!localFlutterGradlePlugin.exists() || !stampFile.exists() || stampFile.readText() != sourceStamp) {
+        localFlutterGradlePlugin.deleteRecursively()
+        flutterGradlePlugin.copyRecursively(localFlutterGradlePlugin, overwrite = true)
+        stampFile.writeText(sourceStamp)
+    }
+
+    includeBuild(localFlutterGradlePlugin.path)
 
     repositories {
         google()

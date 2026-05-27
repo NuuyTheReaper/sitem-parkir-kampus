@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_client.dart';
 import '../../core/app_theme.dart';
 import '../../core/constants.dart';
-import 'dart:html' as html;
+import '../../core/platform_link.dart';
 
 class LogsTab extends ConsumerStatefulWidget {
   const LogsTab({super.key});
@@ -12,7 +12,15 @@ class LogsTab extends ConsumerStatefulWidget {
 }
 
 class _LogsTabState extends ConsumerState<LogsTab> {
-  String _filter = 'semua';
+  static const List<String> _typeFilters = ['semua', 'masuk', 'keluar'];
+  static const List<String> _periodFilters = [
+    'semua',
+    'hari_ini',
+    '7_hari',
+    '30_hari',
+  ];
+  String _typeFilter = 'semua';
+  String _periodFilter = 'semua';
 
   Future<List<dynamic>> fetchLogs() async {
     final response = await ref.read(dioProvider).get('admin/reports');
@@ -20,21 +28,231 @@ class _LogsTabState extends ConsumerState<LogsTab> {
   }
 
   void _exportCsv() {
-    // Open the CSV download URL in a new tab
-    final url = '${AppConstants.baseUrl}admin/reports/export-csv';
-    html.window.open(url, '_blank');
+    const url = '${AppConstants.baseUrl}admin/reports/export-csv';
+    final opened = openExternalUrl(url);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.download_done_rounded, color: Colors.white, size: 18),
-            SizedBox(width: 8),
-            Text('Mengunduh laporan CSV...'),
+            Icon(
+              opened ? Icons.download_done_rounded : Icons.info_outline,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              opened
+                  ? 'Mengunduh laporan CSV...'
+                  : 'Export CSV tersedia di versi web.',
+            ),
           ],
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: opened ? Colors.green : AppTheme.maroon,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  String _typeLabel(String filter) {
+    return filter == 'semua'
+        ? 'Semua'
+        : filter == 'masuk'
+            ? '↑ Masuk'
+            : '↓ Keluar';
+  }
+
+  String _periodLabel(String filter) {
+    return switch (filter) {
+      'hari_ini' => 'Hari ini',
+      '7_hari' => '7 hari',
+      '30_hari' => '30 hari',
+      _ => 'Semua',
+    };
+  }
+
+  bool _matchesPeriod(dynamic rawTime) {
+    if (_periodFilter == 'semua') return true;
+
+    final timeText = rawTime?.toString();
+    if (timeText == null || timeText.isEmpty) return false;
+
+    final time = DateTime.tryParse(timeText)?.toLocal();
+    if (time == null) return false;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = switch (_periodFilter) {
+      'hari_ini' => today,
+      '7_hari' => today.subtract(const Duration(days: 6)),
+      '30_hari' => today.subtract(const Duration(days: 29)),
+      _ => DateTime(0),
+    };
+
+    return !time.isBefore(start);
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onSelected,
+  }) {
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      selectedColor: AppTheme.maroon,
+      checkmarkColor: Colors.white,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppTheme.maroon,
+        fontWeight: FontWeight.w600,
+        fontSize: 12,
+      ),
+      side: const BorderSide(color: AppTheme.maroon),
+      backgroundColor: Colors.white,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+
+  List<Widget> _buildTypeFilterChips() {
+    return _typeFilters
+        .map(
+          (filter) => _buildFilterChip(
+            label: _typeLabel(filter),
+            selected: _typeFilter == filter,
+            onSelected: () => setState(() => _typeFilter = filter),
+          ),
+        )
+        .toList();
+  }
+
+  List<Widget> _buildPeriodFilterChips() {
+    return _periodFilters
+        .map(
+          (filter) => _buildFilterChip(
+            label: _periodLabel(filter),
+            selected: _periodFilter == filter,
+            onSelected: () => setState(() => _periodFilter = filter),
+          ),
+        )
+        .toList();
+  }
+
+  Widget _buildFilterGroup(String label, List<Widget> chips) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          '$label:',
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: AppTheme.maroon,
+            fontSize: 13,
+          ),
+        ),
+        ...chips,
+      ],
+    );
+  }
+
+  Widget _buildExportButton() {
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppTheme.maroon,
+        side: const BorderSide(color: AppTheme.maroon),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        visualDensity: VisualDensity.compact,
+      ),
+      onPressed: _exportCsv,
+      icon: const Icon(Icons.download_rounded, size: 16),
+      label: const Text(
+        'CSV',
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Container(
+      color: AppTheme.maroonSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 420;
+          final typeChips = _buildTypeFilterChips();
+          final periodChips = _buildPeriodFilterChips();
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.filter_list_rounded,
+                      size: 18,
+                      color: AppTheme.maroon,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Filter:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.maroon,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildFilterGroup('Jenis', typeChips),
+                const SizedBox(height: 8),
+                _buildFilterGroup('Periode', periodChips),
+                const SizedBox(height: 8),
+                _buildExportButton(),
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.filter_list_rounded,
+                size: 18,
+                color: AppTheme.maroon,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Filter:',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.maroon,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildFilterGroup('Jenis', typeChips),
+                    const SizedBox(height: 8),
+                    _buildFilterGroup('Periode', periodChips),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildExportButton(),
+            ],
+          );
+        },
       ),
     );
   }
@@ -43,70 +261,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Filter bar
-        Container(
-          color: AppTheme.maroonSurface,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            children: [
-              const Icon(Icons.filter_list_rounded,
-                  size: 18, color: AppTheme.maroon),
-              const SizedBox(width: 8),
-              const Text('Filter:',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.maroon,
-                      fontSize: 13)),
-              const SizedBox(width: 10),
-              for (final f in ['semua', 'masuk', 'keluar'])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(f == 'semua'
-                        ? 'Semua'
-                        : f == 'masuk'
-                            ? '↑ Masuk'
-                            : '↓ Keluar'),
-                    selected: _filter == f,
-                    onSelected: (_) => setState(() => _filter = f),
-                    selectedColor: AppTheme.maroon,
-                    checkmarkColor: Colors.white,
-                    labelStyle: TextStyle(
-                      color: _filter == f ? Colors.white : AppTheme.maroon,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                    side: const BorderSide(color: AppTheme.maroon),
-                    backgroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                  ),
-                ),
-              const Spacer(),
-              // CSV Export button
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.maroon,
-                  side: const BorderSide(color: AppTheme.maroon),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: _exportCsv,
-                icon: const Icon(Icons.download_rounded, size: 16),
-                label: const Text('CSV',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: AppTheme.maroon),
-                tooltip: 'Refresh',
-                onPressed: () => setState(() {}),
-              ),
-            ],
-          ),
-        ),
+        _buildFilterBar(),
 
         // Log list
         Expanded(
@@ -133,13 +288,15 @@ class _LogsTabState extends ConsumerState<LogsTab> {
               }
 
               final logs = snapshot.data!.where((l) {
-                if (_filter == 'semua') return true;
-                return l['jenis_aktivitas'] == _filter;
+                final matchesType = _typeFilter == 'semua' ||
+                    l['jenis_aktivitas'] == _typeFilter;
+                return matchesType && _matchesPeriod(l['waktu']);
               }).toList();
 
               if (logs.isEmpty) {
                 return Center(
-                    child: Text('Tidak ada log "$_filter".',
+                    child: Text(
+                        'Tidak ada log ${_typeLabel(_typeFilter).toLowerCase()} untuk periode ${_periodLabel(_periodFilter).toLowerCase()}.',
                         style: const TextStyle(color: Colors.grey)));
               }
 
@@ -185,17 +342,22 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 14),
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   '${log['vehicle_jenis'] ?? '-'} • ${log['vehicle_plat'] ?? '-'}',
                                   style: const TextStyle(
                                       fontSize: 12, color: Colors.grey),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   log['waktu']?.toString() ?? '-',
                                   style: const TextStyle(
                                       fontSize: 11, color: Colors.grey),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),

@@ -4,15 +4,15 @@ IoT Gateway Simulator v2 — Dual Validation Mode
 
 Simulator ini mensimulasikan perilaku ESP32 yang melakukan:
   1. Tap RFID (input manual UID)
-  2. Request ML Service untuk scan plat (otomatis/manual)
-  3. Kirim ke backend untuk validasi ganda
+  2. Kirim UID ke backend
+  3. Backend meminta ANPR service membaca kamera
   4. Tampilkan respon (buka/tutup gerbang)
 
 Jalankan:
   python iot_simulator_v2.py
   
 Pastikan backend berjalan di http://127.0.0.1:8000
-Opsional: ML Service berjalan di http://127.0.0.1:5000
+Opsional: ANPR service berjalan di http://127.0.0.1:5000
 """
 
 import requests
@@ -24,7 +24,6 @@ import time
 # ═══════════════════════════════════════════
 
 BACKEND_URL = "http://127.0.0.1:8000/api"
-ML_SERVICE_URL = "http://127.0.0.1:5000/api/scan-plate"
 
 # Shortcut RFID UIDs (sesuai seed.py)
 KNOWN_RFIDS = {
@@ -36,10 +35,9 @@ KNOWN_RFIDS = {
 def print_header():
     print("\n" + "═" * 60)
     print("  🏫 SMART CAMPUS PARKING — IoT SIMULATOR v2.0")
-    print("  Mode: Validasi Ganda (RFID + ML Plate Detection)")
+    print("  Mode: Backend Capture Validation (RFID + ANPR Service)")
     print("═" * 60)
     print("  Backend: " + BACKEND_URL)
-    print("  ML Svc : " + ML_SERVICE_URL)
     print("─" * 60)
 
 
@@ -65,40 +63,6 @@ def get_rfid_input() -> str:
     else:
         # Assume it's a direct UID input
         return choice
-
-
-def request_ml_scan(gate_id: str) -> tuple[str, float]:
-    """
-    Request ML Service untuk scan plat nomor.
-    Returns (detected_plate, confidence)
-    """
-    try:
-        payload = {
-            "gate_id": gate_id,
-            "request_type": "capture_and_detect"
-        }
-        response = requests.post(ML_SERVICE_URL, json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            plate = data.get("detected_plate", "")
-            conf = data.get("confidence", 0.0)
-            print(f"   📷 ML Detection: '{plate}' (confidence: {conf:.2f})")
-            return plate, conf
-        else:
-            print(f"   ⚠️ ML Service error: {response.status_code}")
-            return "", 0.0
-            
-    except requests.exceptions.ConnectionError:
-        print("   ⚠️ ML Service tidak tersedia (offline)")
-        print("   → Gunakan input manual untuk plat nomor")
-        plate = input("   Masukkan plat nomor (simulasi deteksi kamera): ").strip()
-        conf_str = input("   Masukkan confidence (0.0-1.0, default 0.95): ").strip()
-        conf = float(conf_str) if conf_str else 0.95
-        return plate, conf
-    except Exception as e:
-        print(f"   ❌ ML Error: {e}")
-        return "", 0.0
 
 
 def send_dual_validation(rfid_uid: str, plate: str, confidence: float, gate_type: str, gate_id: str):
@@ -148,6 +112,51 @@ def send_dual_validation(rfid_uid: str, plate: str, confidence: float, gate_type
         print(f"  ❌ Gagal terhubung ke server: {e}")
 
 
+def send_capture_validation(rfid_uid: str, gate_type: str, gate_id: str):
+    """Flow baru: backend yang memanggil ANPR service untuk scan kamera."""
+    payload = {
+        "rfid_uid": rfid_uid,
+        "gate_type": gate_type,
+        "gate_id": gate_id
+    }
+
+    print(f"\n📡 Mengirim ke backend: POST /api/gate/capture-validate")
+    print(f"   Payload: {json.dumps(payload, indent=2)}")
+
+    try:
+        response = requests.post(f"{BACKEND_URL}/gate/capture-validate", json=payload, timeout=30)
+        data = response.json()
+
+        print(f"\n{'─' * 40}")
+        print(f"  📨 RESPON SERVER (HTTP {response.status_code})")
+        print(f"{'─' * 40}")
+
+        if response.status_code == 200:
+            action = data.get("action", "unknown")
+            message = data.get("message", "")
+            student = data.get("student_name", "-")
+            plate_num = data.get("plate_number", "-")
+            detail = data.get("validation_detail", "-")
+
+            if action == "open_gate":
+                print(f"  ✅ AKSES DIIZINKAN")
+                print(f"  🚧 Servo: PALANG TERBUKA ↑")
+                print(f"  👤 Mahasiswa: {student}")
+                print(f"  🏍️  Plat: {plate_num}")
+            else:
+                print(f"  ❌ AKSES DITOLAK")
+                print(f"  🚧 Servo: PALANG TETAP TERTUTUP ═")
+                print(f"  🔔 Buzzer: BEEP BEEP BEEP!")
+
+            print(f"  💬 Pesan: {message}")
+            print(f"  📋 Detail: {detail}")
+        else:
+            print(f"  ⚠️ Error: {data}")
+
+    except Exception as e:
+        print(f"  ❌ Gagal terhubung ke server: {e}")
+
+
 def send_legacy_scan(rfid_uid: str, plate: str, gate_type: str):
     """Legacy mode: gunakan endpoint /scan lama."""
     payload = {
@@ -185,8 +194,8 @@ def main():
             print(f"\n{'═' * 60}")
             print("  MENU UTAMA")
             print("─" * 60)
-            print("  1. 🆕 Scan Kendaraan (Validasi Ganda — RFID + ML)")
-            print("  2. 📟 Scan Kendaraan (Legacy — tanpa ML)")
+            print("  1. 🆕 Scan Kendaraan (Backend + ANPR service)")
+            print("  2. 📟 Scan Kendaraan (Legacy/manual plat)")
             print("  3. 📊 Cek Kapasitas Parkir")
             print("  4. 🚪 Keluar")
             print("─" * 60)
@@ -225,15 +234,8 @@ def main():
             rfid_uid = get_rfid_input()
             
             if choice == "1":
-                # ── MODE VALIDASI GANDA ──
-                print(f"\n📷 Meminta ML Service scan plat nomor...")
-                plate, confidence = request_ml_scan(gate_id)
-                
-                if not plate:
-                    plate = input("   Masukkan plat nomor manual: ").strip()
-                    confidence = 0.95
-                
-                send_dual_validation(rfid_uid, plate, confidence, gate_type, gate_id)
+                # ── MODE BARU: BACKEND MEMANGGIL ANPR SERVICE ──
+                send_capture_validation(rfid_uid, gate_type, gate_id)
                 
             elif choice == "2":
                 # ── MODE LEGACY ──

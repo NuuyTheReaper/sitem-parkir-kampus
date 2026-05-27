@@ -217,82 +217,136 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ... Header greeting
+                // Header greeting
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(28),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [
-                        Color(0xFF3D0C0C),
-                        Color(0xFF8B1A1A),
-                        Color(0xFF9A2020)
+                        Color(0xFF5C0000),
+                        Color(0xFF800000),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [],
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.maroon.withOpacity(0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Smart Campus Parking',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5)),
-                      Text('Ringkasan sistem terkini • Data real-time',
-                          style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: 12)),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.dashboard_rounded,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Dashboard Admin',
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.5)),
+                                SizedBox(height: 2),
+                                Text('Smart Campus Parking System',
+                                    style: TextStyle(
+                                        color: Colors.white70, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF86EFAC),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text('Data Real-time',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // Stats grid
                 Row(
                   children: [
                     Expanded(
                         child: _StatCard(
-                            label: 'Mahasiswa',
+                            label: 'Total Mahasiswa',
                             value: stats['total_mahasiswa'].toString(),
                             icon: Icons.school_rounded,
                             color: AppTheme.maroon,
                             bgColor: AppTheme.maroonSurface)),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     Expanded(
                         child: _StatCard(
-                            label: 'Petugas',
+                            label: 'Total Petugas',
                             value: stats['total_petugas'].toString(),
                             icon: Icons.badge_rounded,
-                            color: Colors.blue,
-                            bgColor: Colors.blue[50]!)),
+                            color: const Color(0xFF3B82F6),
+                            bgColor: const Color(0xFFEFF6FF))),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
                         child: _StatCard(
-                            label: 'Masuk',
+                            label: 'Masuk Hari Ini',
                             value: stats['masuk_today'].toString(),
                             icon: Icons.login_rounded,
-                            color: Colors.green,
-                            bgColor: Colors.green[50]!)),
-                    const SizedBox(width: 12),
+                            color: const Color(0xFF16A34A),
+                            bgColor: const Color(0xFFF0FDF4))),
+                    const SizedBox(width: 16),
                     Expanded(
                         child: _StatCard(
-                            label: 'Keluar',
+                            label: 'Keluar Hari Ini',
                             value: stats['keluar_today'].toString(),
                             icon: Icons.logout_rounded,
-                            color: Colors.orange,
-                            bgColor: Colors.orange[50]!)),
+                            color: const Color(0xFFF59E0B),
+                            bgColor: const Color(0xFFFFF7ED))),
                   ],
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
                 // Chart
                 Container(
@@ -529,44 +583,46 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.08)),
-        boxShadow: [],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.slate200),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.slate900.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [bgColor, bgColor.withOpacity(0.5)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
+              color: bgColor,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: color, size: 26),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(value,
                     style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: color,
-                        letterSpacing: -1)),
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.slate900,
+                        letterSpacing: -1.2)),
                 const SizedBox(height: 2),
                 Text(label,
                     style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[500],
+                        fontSize: 13,
+                        color: AppTheme.slate500,
                         fontWeight: FontWeight.w500),
                     overflow: TextOverflow.ellipsis),
               ],

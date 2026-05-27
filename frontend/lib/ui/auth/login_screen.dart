@@ -86,353 +86,447 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final isMobile = size.width <= 900;
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Row(
+      body: Stack(
         children: [
-          // ── Left Panel - Minimalist Hero ──────────────────────────
-          if (!isMobile)
-            Expanded(
-              flex: 5,
-              child: Container(
-                color: const Color(0xFFF9FAFB),
-                child: Stack(
-                  children: [
-                    // Subtle gradient overlay
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.maroon.withOpacity(0.02),
-                            Colors.transparent,
-                            AppTheme.maroon.withOpacity(0.01),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/bglogin.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                debugPrint('Error loading image: $error');
+                return Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFF8F9FA),
+                        Colors.white,
+                        Color(0xFFF1F3F5),
+                      ],
                     ),
-                    // Minimalist geometric shapes
-                    Positioned(
-                      top: 60,
-                      left: 60,
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: AppTheme.maroon.withOpacity(0.08),
-                              width: 1),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 100,
-                      right: 80,
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: AppTheme.maroon.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                    // Main content
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 80),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Minimal icon
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                color: AppTheme.maroon,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Icon(
-                                Icons.local_parking_rounded,
-                                size: 40,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 48),
-                            // Title
-                            const Text(
-                              'Smart Campus\nParking System',
-                              style: TextStyle(
-                                fontSize: 48,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1A1A1A),
-                                height: 1.15,
-                                letterSpacing: -1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            // Subtitle
-                            Text(
-                              'Sistem manajemen parkir kampus\nterintegrasi dengan IoT & RFID',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                                height: 1.6,
-                                letterSpacing: -0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 60),
-                            // Minimal features list
-                            _buildMinimalFeature('Akses RFID Real-time'),
-                            const SizedBox(height: 16),
-                            _buildMinimalFeature('Verifikasi Kendaraan'),
-                            const SizedBox(height: 16),
-                            _buildMinimalFeature('Laporan & Statistik'),
-                          ],
-                        ),
-                      ),
-                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.22),
+                    Colors.black.withValues(alpha: 0.06),
+                    Colors.white.withValues(alpha: 0.16),
                   ],
                 ),
               ),
             ),
-
-          // ── Right Panel - Clean Login Form ───────────────────
-          Expanded(
-            flex: isMobile ? 1 : 4,
-            child: Container(
-              color: Colors.white,
-              child: Center(
-                child: FadeTransition(
-                  opacity: _fadeIn,
-                  child: SlideTransition(
-                    position: _slideUp,
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.all(isMobile ? 24 : 48),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 440),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Mobile logo
-                            if (isMobile) ...[
-                              Center(
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.maroon,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: const Icon(
-                                    Icons.local_parking_rounded,
-                                    size: 32,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 32),
-                            ],
-                            // Header
-                            const Text(
-                              'Masuk',
-                              style: TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1A1A1A),
-                                letterSpacing: -1,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Masuk ke akun Anda untuk melanjutkan',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.grey[600],
-                                height: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 48),
-
-                            // NIM field
-                            Text(
-                              'NIM / NPP',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              controller: _nimController,
-                              style: const TextStyle(fontSize: 15),
-                              decoration: InputDecoration(
-                                hintText: 'Masukkan NIM atau NPP',
-                                hintStyle: TextStyle(color: Colors.grey[400]),
-                                prefixIcon: Icon(
-                                  Icons.badge_outlined,
-                                  size: 20,
-                                  color: Colors.grey[400],
-                                ),
-                                filled: true,
-                                fillColor: const Color(0xFFF9FAFB),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide:
-                                      BorderSide(color: Colors.grey[200]!),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide:
-                                      BorderSide(color: Colors.grey[200]!),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                      color: AppTheme.maroon, width: 1.5),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 16),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Password field
-                            Text(
-                              'Password',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              controller: _passwordController,
-                              obscureText: _obscurePassword,
-                              style: const TextStyle(fontSize: 15),
-                              onSubmitted: (_) => _handleLogin(),
-                              decoration: InputDecoration(
-                                hintText: 'Masukkan password',
-                                hintStyle: TextStyle(color: Colors.grey[400]),
-                                prefixIcon: Icon(
-                                  Icons.lock_outline,
-                                  size: 20,
-                                  color: Colors.grey[400],
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_outlined
-                                        : Icons.visibility_off_outlined,
-                                    size: 20,
-                                    color: Colors.grey[400],
-                                  ),
-                                  onPressed: () => setState(() =>
-                                      _obscurePassword = !_obscurePassword),
-                                ),
-                                filled: true,
-                                fillColor: const Color(0xFFF9FAFB),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide:
-                                      BorderSide(color: Colors.grey[200]!),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide:
-                                      BorderSide(color: Colors.grey[200]!),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                      color: AppTheme.maroon, width: 1.5),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 16),
-                              ),
-                            ),
-                            const SizedBox(height: 40),
-
-                            // Login button
-                            SizedBox(
-                              height: 54,
-                              child: ElevatedButton(
-                                onPressed:
-                                    authState.isLoading ? null : _handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.maroon,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  disabledBackgroundColor: Colors.grey[300],
-                                ),
-                                child: authState.isLoading
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2.5,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Masuk',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 0.2,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
-
-                            // Info notice
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppTheme.maroon.withOpacity(0.04),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: AppTheme.maroon.withOpacity(0.1),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.info_outline,
-                                    size: 18,
-                                    color: AppTheme.maroon.withOpacity(0.7),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Login menggunakan NIM untuk mahasiswa, NPP untuk petugas & admin',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey[700],
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
+          ),
+          if (isMobile)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    stops: const [0.0, 0.45, 1.0],
+                    colors: [
+                      AppTheme.maroonDark.withValues(alpha: 0.68),
+                      AppTheme.maroon.withValues(alpha: 0.28),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Positioned.fill(
+            child: Row(
+              children: [
+                if (!isMobile)
+                  Expanded(
+                    flex: 5,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                stops: const [0.0, 0.52, 1.0],
+                                colors: [
+                                  AppTheme.maroonDark.withValues(alpha: 0.82),
+                                  AppTheme.maroon.withValues(alpha: 0.36),
+                                  Colors.transparent,
                                 ],
                               ),
                             ),
-                          ],
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.46),
+                                  Colors.black.withValues(alpha: 0.18),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 80),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Smart Campus\nParking System',
+                                  style: TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    height: 1.2,
+                                    letterSpacing: 0,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                Text(
+                                  'Sistem manajemen parkir kampus\nterintegrasi dengan IoT & RFID',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                    height: 1.6,
+                                    letterSpacing: 0,
+                                  ),
+                                ),
+                                const SizedBox(height: 56),
+                                _buildModernFeature('Akses RFID Real-time'),
+                                const SizedBox(height: 18),
+                                _buildModernFeature('Verifikasi Kendaraan'),
+                                const SizedBox(height: 18),
+                                _buildModernFeature('Laporan & Statistik'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Expanded(
+                  flex: isMobile ? 1 : 4,
+                  child: Container(
+                    color: isMobile ? null : Colors.white,
+                    child: SafeArea(
+                      child: Center(
+                        child: FadeTransition(
+                          opacity: _fadeIn,
+                          child: SlideTransition(
+                            position: _slideUp,
+                            child: SingleChildScrollView(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isMobile ? 24 : 56,
+                                vertical: 32,
+                              ),
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 440),
+                                child: Column(
+                                  children: [
+                                    if (isMobile) ...[
+                                      const Text(
+                                        'Smart Campus\nParking System',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                          height: 1.2,
+                                          letterSpacing: 0,
+                                          shadows: [
+                                            Shadow(
+                                              color: Colors.black26,
+                                              offset: Offset(0, 2),
+                                              blurRadius: 4,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Sistem manajemen parkir kampus\nterintegrasi dengan IoT & RFID',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white.withValues(alpha: 0.95),
+                                          height: 1.5,
+                                          letterSpacing: 0,
+                                          shadows: const [
+                                            Shadow(
+                                              color: Colors.black26,
+                                              offset: Offset(0, 1),
+                                              blurRadius: 3,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 32),
+                                    ],
+                                    Container(
+                                      padding: EdgeInsets.all(isMobile ? 24 : 36),
+                                      decoration: isMobile
+                                          ? BoxDecoration(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.94),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.65),
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: AppTheme.slate900
+                                                      .withValues(alpha: 0.12),
+                                                  blurRadius: 30,
+                                                  offset: const Offset(0, 18),
+                                                ),
+                                              ],
+                                            )
+                                          : null,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          const Text(
+                                            'Masuk',
+                                        style: TextStyle(
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.slate900,
+                                          letterSpacing: 0,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Masuk ke akun Anda untuk melanjutkan',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: AppTheme.slate500,
+                                          height: 1.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 40),
+                                      const Text(
+                                        'NIM / NPP',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppTheme.slate700,
+                                          letterSpacing: 0,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: _nimController,
+                                        style: const TextStyle(fontSize: 14),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Masukkan NIM atau NPP',
+                                          hintStyle: TextStyle(
+                                              color: AppTheme.slate400),
+                                          prefixIcon: Icon(
+                                            Icons.badge_outlined,
+                                            size: 20,
+                                            color: AppTheme.slate400,
+                                          ),
+                                          filled: true,
+                                          fillColor: AppTheme.slate50,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(12)),
+                                            borderSide: BorderSide(
+                                                color: AppTheme.slate200),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(12)),
+                                            borderSide: BorderSide(
+                                                color: AppTheme.slate200),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(12)),
+                                            borderSide: BorderSide(
+                                                color: AppTheme.maroon,
+                                                width: 1.5),
+                                          ),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      const Text(
+                                        'Password',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppTheme.slate700,
+                                          letterSpacing: 0,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: _passwordController,
+                                        obscureText: _obscurePassword,
+                                        style: const TextStyle(fontSize: 14),
+                                        onSubmitted: (_) => _handleLogin(),
+                                        decoration: InputDecoration(
+                                          hintText: 'Masukkan password',
+                                          hintStyle: const TextStyle(
+                                              color: AppTheme.slate400),
+                                          prefixIcon: const Icon(
+                                            Icons.lock_outline,
+                                            size: 20,
+                                            color: AppTheme.slate400,
+                                          ),
+                                          suffixIcon: IconButton(
+                                            icon: Icon(
+                                              _obscurePassword
+                                                  ? Icons.visibility_outlined
+                                                  : Icons
+                                                      .visibility_off_outlined,
+                                              size: 20,
+                                              color: AppTheme.slate400,
+                                            ),
+                                            onPressed: () => setState(
+                                              () => _obscurePassword =
+                                                  !_obscurePassword,
+                                            ),
+                                          ),
+                                          filled: true,
+                                          fillColor: AppTheme.slate50,
+                                          border: const OutlineInputBorder(
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(12)),
+                                            borderSide: BorderSide(
+                                                color: AppTheme.slate200),
+                                          ),
+                                          enabledBorder:
+                                              const OutlineInputBorder(
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(12)),
+                                            borderSide: BorderSide(
+                                                color: AppTheme.slate200),
+                                          ),
+                                          focusedBorder:
+                                              const OutlineInputBorder(
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(12)),
+                                            borderSide: BorderSide(
+                                                color: AppTheme.maroon,
+                                                width: 1.5),
+                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 32),
+                                      SizedBox(
+                                        height: 50,
+                                        child: ElevatedButton(
+                                          onPressed: authState.isLoading
+                                              ? null
+                                              : _handleLogin,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppTheme.maroon,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            disabledBackgroundColor:
+                                                AppTheme.slate300,
+                                          ),
+                                          child: authState.isLoading
+                                              ? const SizedBox(
+                                                  width: 20,
+                                                  height: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    color: Colors.white,
+                                                    strokeWidth: 2.5,
+                                                  ),
+                                                )
+                                              : const Text(
+                                                  'Masuk',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 28),
+                                      Container(
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.slate50,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: AppTheme.slate200,
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          children: [
+                                            Icon(
+                                              Icons.info_outline,
+                                              size: 18,
+                                              color: AppTheme.slate500,
+                                            ),
+                                            SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                'Login menggunakan NIM untuk mahasiswa, NPP untuk petugas & admin',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppTheme.slate600,
+                                                  height: 1.5,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -440,25 +534,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildMinimalFeature(String label) {
+  Widget _buildModernFeature(String label) {
     return Row(
       children: [
         Container(
-          width: 4,
-          height: 4,
+          padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: AppTheme.maroon,
-            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Icon(
+            Icons.check_rounded,
+            size: 16,
+            color: Colors.white,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 14),
         Text(
           label,
           style: TextStyle(
             fontSize: 15,
-            color: Colors.grey[700],
+            color: Colors.white.withValues(alpha: 0.9),
             fontWeight: FontWeight.w500,
-            letterSpacing: -0.2,
+            letterSpacing: 0,
           ),
         ),
       ],

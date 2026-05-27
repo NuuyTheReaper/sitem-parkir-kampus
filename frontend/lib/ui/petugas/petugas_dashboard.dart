@@ -9,6 +9,9 @@ import '../shared/profile_tab.dart';
 import '../shared/parking_chart.dart';
 import '../shared/modern_components.dart';
 import '../shared/web_mjpeg_viewer.dart';
+import '../shared/app_header.dart';
+import '../shared/app_navbar.dart';
+import '../shared/filter_toggle.dart';
 
 // Provider to force global refresh
 final refreshTriggerProvider = StateProvider<int>((ref) => 0);
@@ -115,198 +118,72 @@ class _PetugasDashboardState extends ConsumerState<PetugasDashboard> {
     final pendingCount = ref.watch(pendingCountProvider);
 
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: Container(
-          decoration: AppTheme.headerGradient,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                    ),
-                    child: const Icon(Icons.local_parking,
-                        size: 18, color: Colors.white),
+      appBar: AppHeader(
+        title: 'Command Center',
+        subtitle: 'Smart Parking System',
+        actions: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Colors.greenAccent,
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(width: 12),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Command Center',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.3)),
-                      Text('Smart Parking System',
-                          style: TextStyle(
-                              color: Colors.white60,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500)),
-                    ],
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  'ONLINE',
+                  style: TextStyle(
+                    color: Colors.greenAccent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
                   ),
-                  const Spacer(),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                                color: Colors.greenAccent,
-                                shape: BoxShape.circle)),
-                        const SizedBox(width: 6),
-                        const Text('ONLINE',
-                            style: TextStyle(
-                                color: Colors.greenAccent,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded,
-                        color: Colors.white70, size: 22),
-                    onPressed: _refreshBadge,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded,
+                color: Colors.white70, size: 22),
+            onPressed: _refreshBadge,
+          ),
+        ],
       ),
       body: IndexedStack(
         index: _currentIndex,
         children: [
           const LiveMonitorTab(),
-          AccessRequestQueueTab(onCountChanged: _refreshBadge),
+          PermintaanTabWithFilter(onCountChanged: _refreshBadge),
           const SearchMemberTab(),
-          const VerifikasiTab(),
           const ProfileTab(),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.08))),
-          boxShadow: [],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.monitor_rounded, 'Monitor'),
-                _buildNavItemWithBadge(1, Icons.pending_actions_rounded,
-                    'Permintaan', pendingCount),
-                _buildNavItem(2, Icons.person_search_rounded, 'Cari'),
-                _buildNavItem(3, Icons.verified_rounded, 'STNK'),
-                _buildNavItem(4, Icons.account_circle_rounded, 'Profil'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    final isSelected = _currentIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
+      bottomNavigationBar: AppNavBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
           setState(() => _currentIndex = index);
           if (index == 1) _refreshBadge();
         },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.maroonSurface : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+        items: [
+          const NavBarItem(label: 'Monitor', icon: Icons.monitor_rounded),
+          NavBarItem(
+            label: 'Permintaan',
+            icon: Icons.pending_actions_rounded,
+            badgeCount: pendingCount,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 22,
-                  color: isSelected ? AppTheme.maroon : AppTheme.slate500),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? AppTheme.maroon : AppTheme.slate500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItemWithBadge(
-      int index, IconData icon, String label, int count) {
-    final isSelected = _currentIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          setState(() => _currentIndex = index);
-          _refreshBadge();
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.maroonSurface : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Badge(
-                isLabelVisible: count > 0,
-                label: Text(count > 9 ? '9+' : count.toString(),
-                    style: const TextStyle(
-                        fontSize: 8, fontWeight: FontWeight.bold)),
-                backgroundColor: AppTheme.maroon,
-                child: Icon(icon,
-                    size: 22,
-                    color: isSelected ? AppTheme.maroon : AppTheme.slate500),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? AppTheme.maroon : AppTheme.slate500,
-                ),
-              ),
-            ],
-          ),
-        ),
+          const NavBarItem(label: 'Cari', icon: Icons.person_search_rounded),
+          const NavBarItem(label: 'Profil', icon: Icons.account_circle_rounded),
+        ],
       ),
     );
   }
@@ -402,12 +279,18 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withOpacity(0.08)),
-          boxShadow: [],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.slate200),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.slate900.withOpacity(0.02),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,43 +298,37 @@ class _StatCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(7),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        color.withOpacity(0.15),
-                        color.withOpacity(0.05)
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: color.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, size: 14, color: color),
+                  child: Icon(icon, size: 16, color: color),
                 ),
                 const Spacer(),
                 Text(label,
                     style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 11,
                         color: AppTheme.slate500,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0)),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Text(value,
                 style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
                     color: AppTheme.slate900,
-                    letterSpacing: -0.5)),
+                    letterSpacing: -0.8)),
             if (progress != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                     value: progress!,
-                    minHeight: 5,
-                    backgroundColor: color.withOpacity(0.08),
+                    minHeight: 4,
+                    backgroundColor: color.withOpacity(0.1),
                     color: color),
               ),
             ],
@@ -1016,6 +893,56 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
               .showSnackBar(SnackBar(content: Text('Gagal: $e')));
       }
     }
+  }
+}
+
+// ── PERMINTAAN TAB WITH FILTER ─────────────────────────────
+class PermintaanTabWithFilter extends ConsumerStatefulWidget {
+  final VoidCallback? onCountChanged;
+  const PermintaanTabWithFilter({super.key, this.onCountChanged});
+
+  @override
+  ConsumerState<PermintaanTabWithFilter> createState() =>
+      _PermintaanTabWithFilterState();
+}
+
+class _PermintaanTabWithFilterState
+    extends ConsumerState<PermintaanTabWithFilter> {
+  String _selectedFilter = 'gerbang'; // 'gerbang' or 'stnk'
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Filter Toggle
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: FilterToggle(
+            options: const [
+              FilterOption(
+                value: 'gerbang',
+                label: 'Permintaan Gerbang',
+                icon: Icons.pending_actions_rounded,
+              ),
+              FilterOption(
+                value: 'stnk',
+                label: 'Verifikasi STNK',
+                icon: Icons.verified_rounded,
+              ),
+            ],
+            selectedValue: _selectedFilter,
+            onChanged: (value) => setState(() => _selectedFilter = value),
+          ),
+        ),
+
+        // Content based on filter
+        Expanded(
+          child: _selectedFilter == 'gerbang'
+              ? AccessRequestQueueTab(onCountChanged: widget.onCountChanged)
+              : const VerifikasiTab(),
+        ),
+      ],
+    );
   }
 }
 

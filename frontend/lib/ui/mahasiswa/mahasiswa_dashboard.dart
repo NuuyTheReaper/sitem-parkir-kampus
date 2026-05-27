@@ -1,5 +1,3 @@
-import 'dart:html' as html;
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,10 +6,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/api_client.dart';
 import '../../core/app_theme.dart';
 import '../../core/constants.dart';
-import '../../providers/auth_provider.dart';
-import '../auth/login_screen.dart';
+import '../../core/platform_file_picker.dart';
 import '../shared/profile_tab.dart';
 import '../shared/modern_components.dart';
+import '../shared/app_header.dart';
+import '../shared/app_navbar.dart';
 
 class MahasiswaDashboard extends ConsumerStatefulWidget {
   const MahasiswaDashboard({super.key});
@@ -23,11 +22,34 @@ class MahasiswaDashboard extends ConsumerStatefulWidget {
 class _MahasiswaDashboardState extends ConsumerState<MahasiswaDashboard> {
   int _currentIndex = 0;
   WebSocketChannel? _channel;
+  List<dynamic> _announcements = [];
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _connectWS();
+    _loadAnnouncements();
+  }
+
+  Future<void> _loadAnnouncements() async {
+    try {
+      final response = await ref.read(dioProvider).get('mahasiswa/announcements');
+      if (mounted) {
+        setState(() {
+          _announcements = (response.data as List<dynamic>?) ?? [];
+          _unreadCount = _announcements.where((a) => a['is_read'] != true).length;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading announcements: $e');
+      if (mounted) {
+        setState(() {
+          _announcements = [];
+          _unreadCount = 0;
+        });
+      }
+    }
   }
 
   void _connectWS() {
@@ -36,7 +58,8 @@ class _MahasiswaDashboardState extends ConsumerState<MahasiswaDashboard> {
       _channel!.stream.listen((message) {
         final decoded = jsonDecode(message);
         if (decoded['type'] == 'announcement') {
-          _showAnnouncement(decoded['message'], decoded['sender']);
+          _showAnnouncementSnackbar(decoded['message'], decoded['sender']);
+          _loadAnnouncements(); // Refresh announcements
         }
       },
           onError: (_) =>
@@ -44,39 +67,186 @@ class _MahasiswaDashboardState extends ConsumerState<MahasiswaDashboard> {
     } catch (_) {}
   }
 
-  void _showAnnouncement(String msg, String sender) {
+  void _showAnnouncementSnackbar(String msg, String sender) {
     if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
           children: [
-            const Icon(Icons.campaign, color: AppTheme.maroon),
-            const SizedBox(width: 8),
-            const Text('Pengumuman Baru'),
+            const Icon(Icons.campaign, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Pengumuman Baru',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(msg,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(msg,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 12),
-            Text('Dari: $sender',
-                style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                    fontStyle: FontStyle.italic)),
-          ],
+        backgroundColor: AppTheme.maroon,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Lihat',
+          textColor: Colors.white,
+          onPressed: _showAnnouncementsSheet,
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
-        ],
       ),
     );
+  }
+
+  void _showAnnouncementsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.slate300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.maroonSurface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.campaign,
+                          color: AppTheme.maroon, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('Pengumuman',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.slate900)),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppTheme.slate100,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Announcements list
+              Expanded(
+                child: _announcements.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.campaign_outlined,
+                                size: 64, color: AppTheme.slate300),
+                            const SizedBox(height: 16),
+                            Text('Belum ada pengumuman',
+                                style: TextStyle(
+                                    color: AppTheme.slate500, fontSize: 14)),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: _announcements.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final ann = _announcements[index] as Map<String, dynamic>?;
+                          if (ann == null) return const SizedBox.shrink();
+                          
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppTheme.slate50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.slate200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        (ann['message'] ?? '').toString(),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            color: AppTheme.slate900),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(Icons.person_outline,
+                                        size: 14, color: AppTheme.slate500),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      (ann['sender'] ?? '-').toString(),
+                                      style: TextStyle(
+                                          fontSize: 12, color: AppTheme.slate500),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Icon(Icons.access_time,
+                                        size: 14, color: AppTheme.slate500),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      (ann['created_at'] ?? '').toString(),
+                                      style: TextStyle(
+                                          fontSize: 12, color: AppTheme.slate500),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) {
+      // Mark all as read when sheet is closed
+      setState(() {
+        _unreadCount = 0;
+      });
+    });
   }
 
   @override
@@ -88,49 +258,50 @@ class _MahasiswaDashboardState extends ConsumerState<MahasiswaDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: Container(
-          decoration: AppTheme.headerGradient,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                    ),
-                    child: const Icon(Icons.local_parking,
-                        size: 18, color: Colors.white),
-                  ),
-                  const SizedBox(width: 12),
-                  const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Dashboard Mahasiswa',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.3)),
-                      Text('Smart Campus Parking',
-                          style: TextStyle(
-                              color: Colors.white60,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                ],
+      appBar: AppHeader(
+        title: 'Dashboard Mahasiswa',
+        actions: [
+          // Notification Bell with Badge
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                onPressed: _showAnnouncementsSheet,
+                icon: const Icon(Icons.notifications_outlined,
+                    color: Colors.white, size: 24),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withOpacity(0.15),
+                  padding: const EdgeInsets.all(8),
+                ),
               ),
-            ),
+              if (_unreadCount > 0)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    child: Text(
+                      _unreadCount > 9 ? '9+' : '$_unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
+        ],
       ),
       body: IndexedStack(
         index: _currentIndex,
@@ -141,61 +312,15 @@ class _MahasiswaDashboardState extends ConsumerState<MahasiswaDashboard> {
           ProfileTab(),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.08))),
-          boxShadow: [],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.local_parking_rounded, 'Status'),
-                _buildNavItem(1, Icons.directions_car_rounded, 'Kendaraan'),
-                _buildNavItem(2, Icons.history_rounded, 'Riwayat'),
-                _buildNavItem(3, Icons.person_rounded, 'Profil'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    final isSelected = _currentIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _currentIndex = index),
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.maroonSurface : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 22,
-                  color: isSelected ? AppTheme.maroon : AppTheme.slate500),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? AppTheme.maroon : AppTheme.slate500,
-                ),
-              ),
-            ],
-          ),
-        ),
+      bottomNavigationBar: AppNavBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        items: const [
+          NavBarItem(label: 'Home', icon: Icons.home_rounded),
+          NavBarItem(label: 'Kendaraan', icon: Icons.directions_car_rounded),
+          NavBarItem(label: 'Riwayat', icon: Icons.history_rounded),
+          NavBarItem(label: 'Profil', icon: Icons.person_rounded),
+        ],
       ),
     );
   }
@@ -261,15 +386,15 @@ class _StatusTabState extends ConsumerState<StatusTab> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Status Card
+            // Status Card Only
             FutureBuilder<Map<String, dynamic>>(
               future: fetchStatus(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const SizedBox(
-                      height: 140,
+                      height: 200,
                       child: Center(
                           child: CircularProgressIndicator(
                               color: AppTheme.maroon)));
@@ -284,190 +409,127 @@ class _StatusTabState extends ConsumerState<StatusTab> {
 
                 return Column(
                   children: [
+                    // Warning Banner (if flagged)
                     if (isFlagged) ...[
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Colors.red[50],
+                          color: const Color(0xFFFEF2F2),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.red[200]!),
+                          border: Border.all(color: const Color(0xFFFECACA)),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.warning_amber_rounded,
-                                color: Colors.red),
+                            const Icon(Icons.warning_rounded,
+                                color: Colors.red, size: 20),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Akun Kamu Ditandai!',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.red,
-                                          fontSize: 13)),
-                                  Text(
-                                      data['flag_reason'] ??
-                                          'Pelanggaran peraturan parkir',
-                                      style: TextStyle(
-                                          color: Colors.red[700],
-                                          fontSize: 11)),
-                                ],
-                              ),
+                              child: Text(
+                                  data['flag_reason'] ??
+                                      'Akun ditandai - Pelanggaran peraturan',
+                                  style: TextStyle(
+                                      color: Colors.red[700],
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500)),
                             ),
                           ],
                         ),
                       ),
                     ],
+                    
+                    // Main Status Card - Compact & Minimalist
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: isParked
-                              ? [
-                                  const Color(0xFF1B5E20),
-                                  const Color(0xFF2E7D32)
-                                ]
+                              ? [const Color(0xFF15803D), const Color(0xFF16A34A)]
                               : [AppTheme.maroonDark, AppTheme.maroon],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 52,
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Icon(
-                                  isParked
-                                      ? Icons.local_parking_rounded
-                                      : Icons.directions_walk_rounded,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Status Parkir',
-                                      style: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
-                                          fontSize: 13),
-                                    ),
-                                    Text(
-                                      status,
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: isParked
-                                      ? Colors.greenAccent
-                                      : Colors.orange,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [],
-                                ),
-                              ),
-                            ],
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isParked ? const Color(0xFF15803D) : AppTheme.maroon).withOpacity(0.15),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                          if (data['waktu_terakhir'] != null) ...[
-                            const SizedBox(height: 12),
-                            Divider(color: Colors.white.withOpacity(0.2)),
-                            const SizedBox(height: 8),
-                            Row(
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // Icon - Smaller
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              isParked ? Icons.local_parking_rounded : Icons.directions_walk_rounded,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          
+                          // Status Info
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.access_time_rounded,
-                                    size: 14,
-                                    color: Colors.white.withOpacity(0.7)),
-                                const SizedBox(width: 6),
                                 Text(
-                                  'Update: ${data['waktu_terakhir']}',
-                                  style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 12),
+                                  status,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.5,
+                                  ),
                                 ),
+                                if (data['waktu_terakhir'] != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    data['waktu_terakhir'],
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.85),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
-                          ],
+                          ),
                         ],
                       ),
                     ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-
-            // Request Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: AppTheme.maroonSurface,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.send_rounded,
-                              color: AppTheme.maroon, size: 18),
-                        ),
-                        const SizedBox(width: 12),
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Ajukan Permintaan Akses',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                    color: AppTheme.maroon)),
-                            Text('Akan diverifikasi oleh petugas parkir',
-                                style: TextStyle(
-                                    fontSize: 11, color: Colors.grey)),
-                          ],
-                        ),
-                      ],
-                    ),
+                    
                     const SizedBox(height: 16),
+                    
+                    // Action Buttons - Outside Card
                     Row(
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: () => _sendRequest('masuk'),
                             icon: const Icon(Icons.login_rounded, size: 18),
-                            label: const Text('Minta Masuk'),
+                            label: const Text('Masuk',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600)),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Colors.white,
+                              foregroundColor: isParked ? const Color(0xFF16A34A) : AppTheme.maroon,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: AppTheme.slate200)),
+                              elevation: 0,
                             ),
                           ),
                         ),
@@ -476,145 +538,38 @@ class _StatusTabState extends ConsumerState<StatusTab> {
                           child: ElevatedButton.icon(
                             onPressed: () => _sendRequest('keluar'),
                             icon: const Icon(Icons.logout_rounded, size: 18),
-                            label: const Text('Minta Keluar'),
+                            label: const Text('Keluar',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600)),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.maroon,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Colors.white,
+                              foregroundColor: AppTheme.slate700,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: AppTheme.slate200)),
+                              elevation: 0,
                             ),
                           ),
                         ),
                       ],
                     ),
                   ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Announcements Section
-            const Row(
-              children: [
-                Icon(Icons.campaign_rounded, size: 20, color: Colors.orange),
-                SizedBox(width: 8),
-                Text('Pengumuman Terbaru',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.orange)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            FutureBuilder<List<dynamic>>(
-              future: ref
-                  .read(dioProvider)
-                  .get('mahasiswa/announcements')
-                  .then((r) => r.data as List<dynamic>),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const SizedBox(
-                      height: 60,
-                      child: Center(
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.orange)));
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border:
-                          Border.all(color: Colors.orange.withOpacity(0.15)),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(Icons.campaign_outlined,
-                            size: 32, color: Colors.grey[300]),
-                        const SizedBox(height: 6),
-                        const Text('Belum ada pengumuman',
-                            style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      ],
-                    ),
-                  );
-                }
-                return Column(
-                  children: snapshot.data!.map<Widget>((ann) {
-                    return Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.orange.withOpacity(0.08),
-                            Colors.amber.withOpacity(0.04)
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        border:
-                            Border.all(color: Colors.orange.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.campaign,
-                                color: Colors.orange, size: 18),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  ann['message'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Oleh: ${ann['sender'] ?? '-'} • ${ann['created_at'] ?? ''}',
-                                  style: TextStyle(
-                                      fontSize: 10, color: Colors.grey[500]),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
                 );
               },
             ),
-
+            
             const SizedBox(height: 24),
 
             // Request history header
-            const Row(
-              children: [
-                Icon(Icons.history_rounded, size: 20, color: AppTheme.maroon),
-                SizedBox(width: 8),
-                Text('Riwayat Permintaan',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.maroon)),
-              ],
-            ),
-            const SizedBox(height: 12),
+            Text('Riwayat Permintaan',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.slate900,
+                    letterSpacing: -0.3)),
+            const SizedBox(height: 16),
 
             // History list
             FutureBuilder<List<dynamic>>(
@@ -625,18 +580,17 @@ class _StatusTabState extends ConsumerState<StatusTab> {
                       child: CircularProgressIndicator(color: AppTheme.maroon));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          Icon(Icons.inbox_rounded,
-                              size: 40, color: Colors.grey[300]),
-                          const SizedBox(height: 8),
-                          const Text('Belum ada permintaan',
-                              style: TextStyle(color: Colors.grey)),
-                        ],
-                      ),
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.slate50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.slate200),
+                    ),
+                    child: Center(
+                      child: Text('Belum ada permintaan',
+                          style: TextStyle(
+                              color: AppTheme.slate500, fontSize: 13)),
                     ),
                   );
                 }
@@ -648,10 +602,16 @@ class _StatusTabState extends ConsumerState<StatusTab> {
                     final statusColor = AppTheme.statusColor(status);
                     final statusIcon = AppTheme.statusIcon(status);
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.slate200),
+                      ),
                       child: Padding(
-                        padding: const EdgeInsets.all(14),
+                        padding: EdgeInsets.zero,
                         child: Row(
                           children: [
                             Container(
@@ -752,58 +712,45 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
   }
 
   Future<void> _uploadStnk(int vehicleId) async {
-    // Use HTML file input for web
-    final uploadInput = html.FileUploadInputElement();
-    uploadInput.accept = 'image/*';
-    uploadInput.click();
+    try {
+      final file = await pickImageFile();
+      if (file == null) return;
 
-    uploadInput.onChange.listen((e) async {
-      final files = uploadInput.files;
-      if (files == null || files.isEmpty) return;
-
-      final file = files[0];
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(file);
-
-      reader.onLoadEnd.listen((e) async {
-        try {
-          final bytes = reader.result as Uint8List;
-          final formData = FormData.fromMap({
-            'file': MultipartFile.fromBytes(bytes, filename: file.name),
-          });
-
-          await ref.read(dioProvider).post(
-                'mahasiswa/vehicles/$vehicleId/upload-stnk',
-                data: formData,
-              );
-
-          if (!mounted) return;
-          setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  Text('Foto STNK berhasil diupload! 📸'),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        } catch (err) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('Gagal upload: $err'),
-                backgroundColor: AppTheme.maroon),
-          );
-        }
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(file.bytes, filename: file.name),
       });
-    });
+
+      await ref.read(dioProvider).post(
+            'mahasiswa/vehicles/$vehicleId/upload-stnk',
+            data: formData,
+          );
+
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Foto STNK berhasil diupload! 📸'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal upload: $err'),
+          backgroundColor: AppTheme.maroon,
+        ),
+      );
+    }
   }
 
   void _showAddVehicleDialog() {
@@ -1004,26 +951,58 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F4F4),
+      backgroundColor: Colors.white,
       body: FutureBuilder<List<dynamic>>(
         future: fetchVehicles(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const ShimmerList(itemCount: 4, height: 120);
+            return const Center(
+                child: CircularProgressIndicator(color: AppTheme.maroon));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return ModernEmptyState(
-              icon: Icons.no_crash_outlined,
-              title: 'Belum Ada Kendaraan',
-              subtitle:
-                  'Kamu belum mendaftarkan kendaraan apa pun.\nDaftarkan sekarang untuk mulai parkir.',
-              actionLabel: 'Daftar Kendaraan',
-              onAction: _showAddVehicleDialog,
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: AppTheme.slate50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.directions_car_outlined,
+                          size: 56, color: AppTheme.slate400),
+                    ),
+                    const SizedBox(height: 24),
+                    Text('Belum Ada Kendaraan',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.slate900)),
+                    const SizedBox(height: 8),
+                    Text('Daftarkan kendaraan untuk mulai parkir',
+                        style: TextStyle(fontSize: 14, color: AppTheme.slate500),
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 28),
+                    ElevatedButton(
+                      onPressed: _showAddVehicleDialog,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.maroon,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 14),
+                      ),
+                      child: const Text('Daftar Kendaraan'),
+                    ),
+                  ],
+                ),
+              ),
             );
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             itemCount: snapshot.data!.length,
             itemBuilder: (context, index) {
               final vehicle = snapshot.data![index];
@@ -1034,140 +1013,159 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
               final hasStnk = vehicle['foto_stnk'] != null &&
                   vehicle['foto_stnk'].toString().isNotEmpty;
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              color: AppTheme.maroonSurface,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(
-                              isMotor
-                                  ? Icons.motorcycle_rounded
-                                  : Icons.directions_car_rounded,
-                              color: AppTheme.maroon,
-                              size: 28,
-                            ),
+              return Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.slate200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.slate900.withOpacity(0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header Row
+                    Row(
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: AppTheme.maroonSurface,
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(vehicle['plat_nomor'],
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 18)),
-                                Text(
-                                  '${vehicle['jenis_kendaraan']}${vehicle['merek'] != null && vehicle['merek'].toString().isNotEmpty ? ' • ${vehicle['merek']}' : ''}',
-                                  style: const TextStyle(
-                                      fontSize: 13, color: Colors.grey),
-                                ),
-                              ],
-                            ),
+                          child: Icon(
+                            isMotor
+                                ? Icons.motorcycle_rounded
+                                : Icons.directions_car_rounded,
+                            color: AppTheme.maroon,
+                            size: 30,
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: statusColor.withOpacity(0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(AppTheme.statusIcon(status),
-                                    size: 14, color: statusColor),
-                                const SizedBox(width: 4),
-                                Text(
-                                  status.toUpperCase(),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(vehicle['plat_nomor'],
                                   style: TextStyle(
-                                      color: statusColor,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 20,
+                                      color: AppTheme.slate900,
+                                      letterSpacing: -0.5)),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${vehicle['jenis_kendaraan']}${vehicle['merek'] != null && vehicle['merek'].toString().isNotEmpty ? ' • ${vehicle['merek']}' : ''}',
+                                style: TextStyle(
+                                    fontSize: 13, color: AppTheme.slate500),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Status Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(AppTheme.statusIcon(status),
+                              size: 16, color: statusColor),
+                          const SizedBox(width: 6),
+                          Text(
+                            status,
+                            style: TextStyle(
+                                color: statusColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      // STNK upload section
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: hasStnk ? Colors.green[50] : Colors.orange[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              hasStnk
-                                  ? Icons.check_circle_rounded
-                                  : Icons.camera_alt_outlined,
-                              size: 18,
-                              color: hasStnk ? Colors.green : Colors.orange,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                hasStnk
-                                    ? 'Foto STNK telah diupload ✓'
-                                    : 'Upload foto STNK untuk verifikasi',
-                                style: TextStyle(
-                                  color: hasStnk
-                                      ? Colors.green
-                                      : Colors.orange[800],
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            if (hasStnk)
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.green,
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 8),
-                                ),
-                                onPressed: () => showStnkPhotoDialog(
-                                    context, vehicle['foto_stnk']),
-                                child: const Text('Lihat',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold)),
-                              ),
-                            TextButton.icon(
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.maroon,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                              ),
-                              onPressed: () => _uploadStnk(vehicle['id']),
-                              icon: Icon(
-                                  hasStnk
-                                      ? Icons.refresh
-                                      : Icons.upload_rounded,
-                                  size: 16),
-                              label: Text(hasStnk ? 'Ganti' : 'Upload',
-                                  style: const TextStyle(fontSize: 12)),
-                            ),
-                          ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // STNK Section
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: hasStnk ? const Color(0xFFF0FDF4) : const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: hasStnk ? const Color(0xFFBBF7D0) : const Color(0xFFFED7AA),
                         ),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            hasStnk
+                                ? Icons.check_circle_rounded
+                                : Icons.upload_file_outlined,
+                            size: 20,
+                            color: hasStnk ? const Color(0xFF16A34A) : const Color(0xFFF59E0B),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              hasStnk
+                                  ? 'STNK telah diupload'
+                                  : 'Upload STNK',
+                              style: TextStyle(
+                                color: hasStnk
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFF59E0B),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (hasStnk)
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF16A34A),
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => showStnkPhotoDialog(
+                                  context, vehicle['foto_stnk']),
+                              child: const Text('Lihat',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          if (!hasStnk)
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFFF59E0B),
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => _uploadStnk(vehicle['id']),
+                              child: const Text('Upload',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
@@ -1176,8 +1174,12 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddVehicleDialog,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Daftar Kendaraan'),
+        backgroundColor: AppTheme.maroon,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded, size: 22),
+        label: const Text('Daftar Kendaraan',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+        elevation: 2,
       ),
     );
   }
@@ -1200,7 +1202,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F4F4),
+      backgroundColor: Colors.white,
       body: FutureBuilder<List<dynamic>>(
         future: _fetchHistory(),
         builder: (context, snapshot) {

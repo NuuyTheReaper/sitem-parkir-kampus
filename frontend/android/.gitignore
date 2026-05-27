@@ -1,5 +1,7 @@
 gradle-wrapper.jar
 /.gradle
+/.flutter-gradle-plugin/
+/flutter-gradle-plugin-cache/
 /captures/
 /gradlew
 /gradlew.bat

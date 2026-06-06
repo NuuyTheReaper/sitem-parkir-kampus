@@ -4,6 +4,7 @@
 !.env.example
 *-firebase-adminsdk-*.json
 serviceAccount*.json
+temp_extracted/
 
 # Uploads
 backend/uploads/**/*
@@ -63,3 +64,6 @@ build/
 
 # Agent/Claude workspace config
 .claude/
+
+# Large zip backup
+repo.zip

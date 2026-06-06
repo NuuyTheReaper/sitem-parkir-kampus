@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/app_theme.dart';
 import '../admin/admin_dashboard.dart';
@@ -13,32 +14,15 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen>
-    with SingleTickerProviderStateMixin {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _nimController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  late AnimationController _animController;
-  late Animation<double> _fadeIn;
-  late Animation<Offset> _slideUp;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
-    _fadeIn = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
-    _slideUp = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
-        .animate(CurvedAnimation(
-            parent: _animController, curve: Curves.easeOutCubic));
-    _animController.forward();
-  }
 
   @override
   void dispose() {
     _nimController.dispose();
     _passwordController.dispose();
-    _animController.dispose();
     super.dispose();
   }
 
@@ -227,87 +211,83 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     color: isMobile ? null : Colors.white,
                     child: SafeArea(
                       child: Center(
-                        child: FadeTransition(
-                          opacity: _fadeIn,
-                          child: SlideTransition(
-                            position: _slideUp,
-                            child: SingleChildScrollView(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isMobile ? 24 : 56,
-                                vertical: 32,
-                              ),
-                              child: ConstrainedBox(
-                                constraints:
-                                    const BoxConstraints(maxWidth: 440),
-                                child: Column(
-                                  children: [
-                                    if (isMobile) ...[
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 24 : 56,
+                            vertical: 32,
+                          ),
+                          child: ConstrainedBox(
+                            constraints:
+                                const BoxConstraints(maxWidth: 440),
+                            child: Column(
+                              children: [
+                                if (isMobile) ...[
+                                  const Text(
+                                    'Smart Campus\nParking System',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      height: 1.2,
+                                      letterSpacing: 0,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black26,
+                                          offset: Offset(0, 2),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Sistem manajemen parkir kampus\nterintegrasi dengan IoT & RFID',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.white.withValues(alpha: 0.95),
+                                      height: 1.5,
+                                      letterSpacing: 0,
+                                      shadows: const [
+                                        Shadow(
+                                          color: Colors.black26,
+                                          offset: Offset(0, 1),
+                                          blurRadius: 3,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 32),
+                                ],
+                                Container(
+                                  padding: EdgeInsets.all(isMobile ? 24 : 36),
+                                  decoration: isMobile
+                                      ? BoxDecoration(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.94),
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.65),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppTheme.slate900
+                                                  .withValues(alpha: 0.12),
+                                              blurRadius: 30,
+                                              offset: const Offset(0, 18),
+                                            ),
+                                          ],
+                                        )
+                                      : null,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
                                       const Text(
-                                        'Smart Campus\nParking System',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                          height: 1.2,
-                                          letterSpacing: 0,
-                                          shadows: [
-                                            Shadow(
-                                              color: Colors.black26,
-                                              offset: Offset(0, 2),
-                                              blurRadius: 4,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Sistem manajemen parkir kampus\nterintegrasi dengan IoT & RFID',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.white.withValues(alpha: 0.95),
-                                          height: 1.5,
-                                          letterSpacing: 0,
-                                          shadows: const [
-                                            Shadow(
-                                              color: Colors.black26,
-                                              offset: Offset(0, 1),
-                                              blurRadius: 3,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 32),
-                                    ],
-                                    Container(
-                                      padding: EdgeInsets.all(isMobile ? 24 : 36),
-                                      decoration: isMobile
-                                          ? BoxDecoration(
-                                              color: Colors.white
-                                                  .withValues(alpha: 0.94),
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                              border: Border.all(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.65),
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: AppTheme.slate900
-                                                      .withValues(alpha: 0.12),
-                                                  blurRadius: 30,
-                                                  offset: const Offset(0, 18),
-                                                ),
-                                              ],
-                                            )
-                                          : null,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          const Text(
-                                            'Masuk',
+                                        'Masuk',
                                         style: TextStyle(
                                           fontSize: 32,
                                           fontWeight: FontWeight.w600,
@@ -516,12 +496,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     ],
                                   ),
                                 ),
-                                  ],
-                                ),
-                              ),
+                              ],
                             ),
                           ),
-                        ),
+                        )
+                        .animate()
+                        .fadeIn(duration: 800.ms, curve: Curves.easeOutCubic)
+                        .slideY(begin: 0.05, end: 0, duration: 800.ms, curve: Curves.easeOutCubic),
                       ),
                     ),
                   ),

@@ -113,8 +113,9 @@ class AccessRequest(Base):
     __tablename__ = "access_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
+    emergency_guest_id = Column(Integer, ForeignKey("emergency_guests.id"), nullable=True)
     jenis_aktivitas = Column(SQLEnum(ActivityTypeEnum), nullable=False)
     status = Column(SQLEnum(AccessRequestStatusEnum), default=AccessRequestStatusEnum.pending)
     waktu_request = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -134,3 +135,19 @@ class Announcement(Base):
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False) # Petugas/Admin who sent it
 
     sender = relationship("User")
+
+class EmergencyGuest(Base):
+    __tablename__ = "emergency_guests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nama = Column(String(100), nullable=False)
+    plat_nomor = Column(String(50), nullable=False)
+    alasan = Column(String(255), nullable=False)
+    waktu_masuk = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    waktu_keluar = Column(DateTime, nullable=True)
+    petugas_masuk_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    petugas_keluar_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String(20), default="di_dalam") # di_dalam, sudah_keluar
+
+    petugas_masuk = relationship("User", foreign_keys=[petugas_masuk_id])
+    petugas_keluar = relationship("User", foreign_keys=[petugas_keluar_id])

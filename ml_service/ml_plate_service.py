@@ -21,7 +21,7 @@ Untuk production sebenarnya, tambahkan:
 import random
 import time
 from datetime import datetime, timezone
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, Form
 from pydantic import BaseModel
 from typing import Optional
 import requests
@@ -126,6 +126,59 @@ async def scan_plate(request: ScanRequest):
         confidence=detection["confidence"],
         timestamp=datetime.now(timezone.utc).isoformat(),
         gate_id=request.gate_id,
+    )
+
+
+@app.post("/api/predict-image", response_model=ScanResponse)
+async def predict_image(
+    file: UploadFile = File(...),
+    gate_id: str = Form("GATE_DEFAULT")
+):
+    """
+    Endpoint untuk mendeteksi plat nomor dari berkas gambar yang diunggah.
+    
+    Dalam PRODUCTION, alur ini:
+    1. Baca file image bytes
+    2. Convert ke format OpenCV (numpy array)
+    3. Jalankan YOLOv8 inference → crop bounding box plat
+    4. Jalankan EasyOCR pada area crop
+    5. Return teks plat + confidence
+    """
+    # ── SIMULATOR: Baca bytes (untuk mensimulasikan IO) ──
+    content = await file.read()
+    
+    # ── SIMULATOR: Random pick ──
+    detection = random.choice(SIMULATED_PLATES)
+    
+    """
+    ── PRODUCTION CODE (uncomment saat deploy) ──
+    
+    import cv2
+    import numpy as np
+    from ultralytics import YOLO
+    import easyocr
+    
+    # Load model (singleton)
+    # model = YOLO("yolov8n_plate.pt")
+    # reader = easyocr.Reader(['id'])
+    
+    # Decode bytes ke image OpenCV
+    # nparr = np.frombuffer(content, np.uint8)
+    # frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    # Run YOLOv8
+    # results = model(frame)
+    # ... (proses bounding box & EasyOCR sama seperti di scan_plate)
+    """
+    
+    print(f"[ML] Predict Uploaded Image: filename={file.filename}, gate_id={gate_id} "
+          f"-> Detected '{detection['plate']}' (conf: {detection['confidence']:.2f})")
+          
+    return ScanResponse(
+        detected_plate=detection["plate"],
+        confidence=detection["confidence"],
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        gate_id=gate_id,
     )
 
 

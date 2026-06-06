@@ -1,3 +1,4 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/admin_provider.dart';
@@ -69,7 +70,7 @@ class _ProdiTabState extends ConsumerState<ProdiTab> {
                 decoration: InputDecoration(
                   hintText: 'Contoh: Teknik Informatika',
                   hintStyle: TextStyle(color: AppTheme.slate400, fontSize: 14),
-                  prefixIcon: Icon(Icons.class_rounded,
+                  prefixIcon: const Icon(Icons.class_rounded,
                       color: AppTheme.slate400, size: 20),
                   filled: true,
                   fillColor: AppTheme.slate50,
@@ -171,7 +172,7 @@ class _ProdiTabState extends ConsumerState<ProdiTab> {
                     hintText: 'Cari program studi...',
                     hintStyle:
                         TextStyle(color: AppTheme.slate400, fontSize: 14),
-                    prefixIcon: Icon(Icons.search_rounded,
+                    prefixIcon: const Icon(IconlyLight.search,
                         color: AppTheme.slate400, size: 20),
                     filled: true,
                     fillColor: AppTheme.slate50,
@@ -189,7 +190,7 @@ class _ProdiTabState extends ConsumerState<ProdiTab> {
                 message: 'Tambah Prodi',
                 child: IconButton.filled(
                   onPressed: _showAddProdiDialog,
-                  icon: const Icon(Icons.add_rounded),
+                  icon: const Icon(IconlyLight.plus),
                   style: IconButton.styleFrom(
                     backgroundColor: AppTheme.maroon,
                     foregroundColor: Colors.white,
@@ -220,7 +221,7 @@ class _ProdiTabState extends ConsumerState<ProdiTab> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline,
+                      const Icon(IconlyLight.danger,
                           size: 48, color: AppTheme.slate400),
                       const SizedBox(height: 12),
                       Text(
@@ -267,7 +268,7 @@ class _ProdiTabState extends ConsumerState<ProdiTab> {
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           onPressed: _showAddProdiDialog,
-                          icon: const Icon(Icons.add_rounded, size: 18),
+                          icon: const Icon(IconlyLight.plus, size: 18),
                           label: const Text('Tambah Prodi'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.maroon,

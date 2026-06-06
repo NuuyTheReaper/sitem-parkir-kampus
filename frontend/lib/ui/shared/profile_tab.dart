@@ -1,3 +1,4 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
@@ -174,7 +175,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                                 radius: 52,
                                 backgroundColor: AppTheme.maroonSurface,
                                 child: Icon(
-                                  Icons.person,
+                                  IconlyLight.profile,
                                   size: 55,
                                   color: AppTheme.maroon,
                                 ),
@@ -268,7 +269,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                     onTap: () => setState(() => _currentScreen = 'changePassword'),
                   ),
                   _buildMenuTile(
-                    icon: Icons.logout_rounded,
+                    icon: IconlyLight.logout,
                     title: 'Keluar',
                     iconColor: Colors.redAccent,
                     onTap: () async {
@@ -359,7 +360,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                 obscureText: obscureOld,
                 decoration: InputDecoration(
                   labelText: 'Password Lama',
-                  prefixIcon: const Icon(Icons.lock_rounded, size: 20),
+                  prefixIcon: const Icon(IconlyLight.lock, size: 20),
                   suffixIcon: IconButton(
                     icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility, size: 20),
                     onPressed: () => setScreenState(() => obscureOld = !obscureOld),

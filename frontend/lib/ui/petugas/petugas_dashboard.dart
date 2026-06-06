@@ -1,7 +1,9 @@
+import 'package:iconly/iconly.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_theme.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/api_client.dart';
 import '../../core/constants.dart';
@@ -155,7 +157,10 @@ class _PetugasDashboardState extends ConsumerState<PetugasDashboard> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded,
                 color: Colors.white70, size: 22),
-            onPressed: _refreshBadge,
+            onPressed: () {
+              _refreshBadge();
+              ref.read(refreshTriggerProvider.notifier).state++;
+            },
           ),
         ],
       ),
@@ -225,20 +230,20 @@ class SessionStatsSummary extends ConsumerWidget {
             {"parked": 0, "total": 100}) as Map<String, dynamic>;
         final parked = (capData['parked'] ?? 0) as int;
         final total = (capData['total'] ?? 100) as int;
-        final percent = (parked / total).clamp(0.0, 1.0);
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Row(
-            children: [
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               _StatCard(
                 icon: Icons.directions_car_filled_rounded,
                 label: 'Terisi',
                 value: '$parked/$total',
-                color: percent > 0.9
-                    ? const Color(0xFFDC2626)
-                    : (percent > 0.7 ? AppTheme.amber : AppTheme.emerald),
-                progress: percent,
+                color: AppTheme.teal,
+                progress: total > 0 ? parked / total : 0,
+                delayMs: 0,
               ),
               const SizedBox(width: 10),
               _StatCard(
@@ -246,15 +251,18 @@ class SessionStatsSummary extends ConsumerWidget {
                 label: 'Selesai',
                 value: '${stats['handled_count']}',
                 color: AppTheme.emerald,
+                delayMs: 100,
               ),
               const SizedBox(width: 10),
               _StatCard(
                 icon: Icons.assignment_late_rounded,
                 label: 'STNK',
-                value: '${stats['pending_stnk']}',
-                color: AppTheme.amber,
+                value: '${stats['pending_stnk'] ?? stats['stnk_pending_count'] ?? 0}',
+                color: Colors.orange,
+                delayMs: 200,
               ),
             ],
+          ),
           ),
         );
       },
@@ -268,18 +276,22 @@ class _StatCard extends StatelessWidget {
   final String value;
   final Color color;
   final double? progress;
-  const _StatCard(
-      {required this.icon,
-      required this.label,
-      required this.value,
-      required this.color,
-      this.progress});
+  final int delayMs;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.progress,
+    this.delayMs = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -294,48 +306,57 @@ class _StatCard extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, size: 16, color: color),
-                ),
-                const Spacer(),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.slate500,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0)),
-              ],
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: color),
             ),
-            const SizedBox(height: 12),
-            Text(value,
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppTheme.slate500,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
                 style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.slate900,
-                    letterSpacing: -0.8)),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.slate900,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ),
             if (progress != null) ...[
               const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
-                    value: progress!,
-                    minHeight: 4,
-                    backgroundColor: color.withOpacity(0.1),
-                    color: color),
+                  value: progress!,
+                  minHeight: 4,
+                  backgroundColor: color.withOpacity(0.1),
+                  color: color,
+                ),
               ),
             ],
           ],
         ),
       ),
-    );
+    ).animate(delay: delayMs.ms).fadeIn(duration: 400.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
   }
 }
 
@@ -352,6 +373,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
   final List<Map<String, dynamic>> logs = [];
   String? _cameraUrl;
   bool _showCamera = false;
+  bool _isEmergencyExpanded = false;
 
   @override
   void initState() {
@@ -364,7 +386,9 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
           if (mounted) {
             setState(() {
               logs.insert(0, decoded);
-              if (logs.length > 50) logs.removeLast();
+              while (logs.length > 3) {
+                logs.removeLast();
+              }
             });
             // Trigger global refresh so capacity/chart update too
             ref.read(refreshTriggerProvider.notifier).state++;
@@ -390,7 +414,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.videocam_rounded, color: AppTheme.maroon),
+            Icon(IconlyLight.camera, color: AppTheme.maroon),
             SizedBox(width: 8),
             Text('Koneksi Kamera'),
           ],
@@ -454,7 +478,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
               }
               Navigator.pop(ctx);
             },
-            icon: const Icon(Icons.connected_tv, size: 16, color: Colors.white),
+            icon: const Icon(IconlyLight.camera, size: 16, color: Colors.white),
             label:
                 const Text('Hubungkan', style: TextStyle(color: Colors.white)),
           ),
@@ -539,8 +563,8 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                                 children: [
                                   Icon(
                                       _showCamera
-                                          ? Icons.settings_rounded
-                                          : Icons.videocam_rounded,
+                                          ? IconlyLight.setting
+                                          : IconlyLight.camera,
                                       color: const Color(0xFF94A3B8),
                                       size: 14),
                                   const SizedBox(width: 5),
@@ -570,7 +594,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                               child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.videocam_outlined,
+                                    Icon(IconlyLight.camera,
                                         color: Color(0xFF475569), size: 44),
                                     SizedBox(height: 10),
                                     Text('Kamera Belum Terhubung',
@@ -601,7 +625,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                       decoration: BoxDecoration(
                           color: AppTheme.emerald.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.document_scanner_rounded,
+                      child: const Icon(IconlyLight.scan,
                           size: 16, color: AppTheme.emerald),
                     ),
                     const SizedBox(width: 10),
@@ -641,7 +665,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                     child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.radar_rounded,
+                          Icon(IconlyLight.scan,
                               size: 32, color: Color(0xFF334155)),
                           SizedBox(height: 8),
                           Text('Menunggu scan kendaraan...',
@@ -651,13 +675,10 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                   ),
                 )
               else
-                SizedBox(
-                  height: 220,
-                  child: ListView.builder(
-                    itemCount: logs.length,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemBuilder: (context, index) {
-                      final log = logs[index];
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: logs.map((log) {
                       final isSuccess = log['type'] == 'success';
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -740,7 +761,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                           ],
                         ),
                       );
-                    },
+                    }).toList(),
                   ),
                 ),
 
@@ -761,7 +782,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                             decoration: BoxDecoration(
                                 color: AppTheme.tealLight,
                                 borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.bar_chart_rounded,
+                            child: const Icon(IconlyLight.chart,
                                 size: 16, color: AppTheme.teal),
                           ),
                           const SizedBox(width: 10),
@@ -804,93 +825,266 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
       ),
       child: Column(
         children: [
-          const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-              SizedBox(width: 8),
-              Text('Emergency Override',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Colors.orange)),
-            ],
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isEmergencyExpanded = !_isEmergencyExpanded;
+              });
+            },
+            child: Row(
+              children: [
+                const Icon(IconlyLight.danger, color: Colors.orange, size: 18),
+                const SizedBox(width: 8),
+                const Text('Emergency Override',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: Colors.orange)),
+                const Spacer(),
+                Icon(
+                  _isEmergencyExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: Colors.orange,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
+          if (_isEmergencyExpanded) ...[
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ElevatedButton.icon(
                   onPressed: () => _handleEmergencyOpen('masuk'),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white),
-                  icon: const Icon(Icons.sensor_door, size: 18),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12)),
+                  icon: const Icon(IconlyLight.login, size: 18),
                   label: const Text('Buka Gate Masuk',
-                      style: TextStyle(fontSize: 12)),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
                   onPressed: () => _handleEmergencyOpen('keluar'),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white),
-                  icon: const Icon(Icons.sensor_door, size: 18),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12)),
+                  icon: const Icon(IconlyLight.logout, size: 18),
                   label: const Text('Buka Gate Keluar',
-                      style: TextStyle(fontSize: 12)),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ]
         ],
       ),
     );
   }
 
   Future<void> _handleEmergencyOpen(String gate) async {
+    List<dynamic> guests = [];
+    if (gate == 'keluar') {
+      try {
+        final response = await ref.read(dioProvider).get('gate/emergency-guests');
+        guests = response.data;
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengambil daftar tamu: $e')));
+        }
+        return;
+      }
+    }
+
     final reasonController = TextEditingController();
+    final nameController = TextEditingController();
+    final vehicleController = TextEditingController();
+    int? selectedGuestId;
+
     bool confirmed = await showDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text('Peringatan: Emergency $gate'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                    'Aksi ini akan membuka gerbang secara paksa dan dicatat oleh sistem.'),
-                const SizedBox(height: 16),
-                TextField(
-                    controller: reasonController,
-                    decoration:
-                        const InputDecoration(hintText: 'Alasan darurat...')),
+          builder: (ctx) => StatefulBuilder(
+            builder: (context, setStateDialog) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(IconlyLight.danger, color: Colors.orange, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Peringatan: Emergency $gate',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Aksi ini akan membuka gerbang secara paksa dan dicatat oleh sistem.',
+                      style: TextStyle(color: AppTheme.slate500, fontSize: 13),
+                    ),
+                    const SizedBox(height: 20),
+                    if (gate == 'keluar' && guests.isNotEmpty) ...[
+                      DropdownButtonFormField<int>(
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          hintText: 'Pilih Tamu Darurat (Opsional)',
+                          prefixIcon: const Icon(IconlyLight.user_1, size: 20),
+                          filled: true,
+                          fillColor: AppTheme.slate50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppTheme.slate200),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        value: selectedGuestId,
+                        items: guests.map((g) {
+                          return DropdownMenuItem<int>(
+                            value: g['id'] as int,
+                            child: Text(
+                              '${g['nama']} (${g['plat_nomor']})',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setStateDialog(() {
+                            selectedGuestId = val;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'ATAU isi manual jika tamu tidak ada di daftar:',
+                        style: TextStyle(fontSize: 12, color: AppTheme.slate400, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (gate == 'masuk' || (gate == 'keluar' && selectedGuestId == null)) ...[
+                      TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          hintText: 'Nama Tamu',
+                          prefixIcon: const Icon(IconlyLight.profile, size: 20),
+                          filled: true,
+                          fillColor: AppTheme.slate50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppTheme.slate200),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: vehicleController,
+                        decoration: InputDecoration(
+                          hintText: 'Plat Kendaraan',
+                          prefixIcon: const Icon(IconlyLight.document, size: 20),
+                          filled: true,
+                          fillColor: AppTheme.slate50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppTheme.slate200),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: reasonController,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        hintText: 'Alasan darurat (opsional)...',
+                        prefixIcon: const Padding(
+                          padding: EdgeInsets.only(bottom: 24),
+                          child: Icon(IconlyLight.chat, size: 20),
+                        ),
+                        filled: true,
+                        fillColor: AppTheme.slate50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.slate200),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: TextButton.styleFrom(foregroundColor: AppTheme.slate500),
+                  child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (gate == 'masuk' && (nameController.text.isEmpty || vehicleController.text.isEmpty)) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Nama dan Kendaraan wajib diisi', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+                    if (gate == 'keluar' && selectedGuestId == null && (nameController.text.isEmpty || vehicleController.text.isEmpty)) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Pilih tamu atau isi manual', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+                    Navigator.pop(ctx, true);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  child: const Text('Konfirmasi Buka', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Batal')),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: TextButton.styleFrom(foregroundColor: Colors.orange),
-                child: const Text('YA, BUKA GERBANG'),
-              ),
-            ],
           ),
         ) ??
         false;
 
     if (confirmed && mounted) {
       try {
-        await ref.read(dioProvider).post('gate/emergency-action',
-            queryParameters: {'gate': gate, 'reason': reasonController.text});
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Gate $gate berhasil dibuka manual')));
+        final queryParams = {
+          'gate': gate, 
+          'reason': reasonController.text,
+        };
+        if (selectedGuestId != null) {
+          queryParams['guest_id'] = selectedGuestId.toString();
+        } else {
+          queryParams['nama'] = nameController.text;
+          queryParams['kendaraan'] = vehicleController.text;
+        }
+
+        final response = await ref.read(dioProvider).post('gate/emergency-action', queryParameters: queryParams);
+        if (mounted) {
+          final msg = response.data['message'] ?? 'Berhasil';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        }
       } catch (e) {
-        if (mounted)
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('Gagal: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+        }
       }
     }
   }
@@ -1013,7 +1207,7 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [
-              Icon(Icons.cancel_outlined, color: AppTheme.maroon),
+              Icon(Icons.close_rounded, color: AppTheme.maroon),
               SizedBox(width: 8),
               Text('Tolak Permintaan'),
             ],
@@ -1071,7 +1265,7 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
                 Navigator.pop(ctx);
                 _respond(requestId, 'ditolak', catatan: catatanController.text);
               },
-              icon: const Icon(Icons.close, size: 16),
+              icon: const Icon(Icons.close_rounded, size: 16),
               label: const Text('Tolak'),
             ),
           ],
@@ -1098,7 +1292,7 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
                 child: CircularProgressIndicator(color: AppTheme.maroon));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return _buildEmptyState(Icons.check_circle_outline_rounded,
+            return _buildEmptyState(Icons.check_rounded,
                 'Tidak ada permintaan\nyang menunggu');
           }
 
@@ -1128,8 +1322,8 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
                             ),
                             child: Icon(
                               isMasuk
-                                  ? Icons.login_rounded
-                                  : Icons.logout_rounded,
+                                  ? IconlyLight.login
+                                  : IconlyLight.logout,
                               color: isMasuk ? Colors.green : AppTheme.maroon,
                             ),
                           ),
@@ -1176,7 +1370,7 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
                                   color: Colors.orange.withOpacity(0.3))),
                           child: Row(
                             children: [
-                              const Icon(Icons.warning_amber_rounded,
+                              const Icon(IconlyLight.danger,
                                   color: Colors.orange, size: 20),
                               const SizedBox(width: 8),
                               Expanded(
@@ -1235,7 +1429,7 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
                                     borderRadius: BorderRadius.circular(8)),
                               ),
                               onPressed: () => _showRejectDialog(r['id']),
-                              icon: const Icon(Icons.close, size: 16),
+                              icon: const Icon(Icons.close_rounded, size: 16),
                               label: const Text('Tolak'),
                             ),
                           ),
@@ -1351,7 +1545,7 @@ class _VerifikasiTabState extends ConsumerState<VerifikasiTab> {
                             child: Icon(
                               isMotor
                                   ? Icons.motorcycle_rounded
-                                  : Icons.directions_car_rounded,
+                                  : Icons.shield_rounded,
                               color: AppTheme.maroon,
                               size: 26,
                             ),
@@ -1443,7 +1637,7 @@ class _VerifikasiTabState extends ConsumerState<VerifikasiTab> {
                               ),
                               onPressed: () =>
                                   _updateStatus(v['id'], 'ditolak'),
-                              icon: const Icon(Icons.close, size: 16),
+                              icon: const Icon(Icons.close_rounded, size: 16),
                               label: const Text('Tolak'),
                             ),
                           ),
@@ -1572,9 +1766,9 @@ class _SearchMemberTabState extends ConsumerState<SearchMemberTab> {
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Cari NIM, Nama, atau Plat Nomor...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(IconlyLight.search),
                 suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear),
+                    icon: const Icon(Icons.close_rounded),
                     onPressed: () => _searchController.clear()),
                 filled: true,
                 fillColor: Colors.white,
@@ -1625,8 +1819,8 @@ class _SearchMemberTabState extends ConsumerState<SearchMemberTab> {
                                   : AppTheme.maroonSurface,
                               child: Icon(
                                   isFlagged
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.person,
+                                      ? IconlyLight.danger
+                                      : IconlyLight.profile,
                                   color: isFlagged
                                       ? Colors.orange
                                       : AppTheme.maroon),

@@ -1,6 +1,8 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_theme.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/api_client.dart';
 import '../shared/filter_toggle.dart';
 
@@ -78,7 +80,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         hintText: 'Cari ${_roleLabel.toLowerCase()}...',
                         hintStyle:
                             TextStyle(color: AppTheme.slate400, fontSize: 14),
-                        prefixIcon: Icon(Icons.search_rounded,
+                        prefixIcon: const Icon(IconlyLight.search,
                             color: AppTheme.slate400, size: 20),
                         filled: true,
                         fillColor: AppTheme.slate50,
@@ -96,7 +98,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                     message: 'Tambah $_roleLabel',
                     child: IconButton.filled(
                       onPressed: _showUserFormDialog,
-                      icon: const Icon(Icons.add_rounded),
+                      icon: const Icon(IconlyLight.plus),
                       style: IconButton.styleFrom(
                         backgroundColor: AppTheme.maroon,
                         foregroundColor: Colors.white,
@@ -129,7 +131,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline,
+                      const Icon(IconlyLight.danger,
                           size: 48, color: AppTheme.slate400),
                       const SizedBox(height: 12),
                       Text(
@@ -178,7 +180,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           onPressed: _showUserFormDialog,
-                          icon: const Icon(Icons.add_rounded, size: 18),
+                          icon: const Icon(IconlyLight.plus, size: 18),
                           label: Text('Tambah $_roleLabel'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.maroon,
@@ -200,7 +202,10 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final user = users[index];
-                    return _buildUserCard(user);
+                    return _buildUserCard(user)
+                        .animate(delay: (index * 50).ms)
+                        .fadeIn(duration: 300.ms)
+                        .slideX(begin: 0.05, end: 0, duration: 300.ms, curve: Curves.easeOut);
                   },
                 ),
               );
@@ -310,7 +315,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                 message: 'Edit $_roleLabel',
                 child: IconButton(
                   onPressed: () => _showUserFormDialog(user: user),
-                  icon: const Icon(Icons.edit_rounded),
+                  icon: const Icon(IconlyLight.edit),
                   color: AppTheme.maroon,
                   iconSize: 18,
                   padding: const EdgeInsets.all(6),
@@ -411,7 +416,7 @@ class _UsersTabState extends ConsumerState<UsersTab> {
                         IconButton(
                           tooltip: 'Edit $_roleLabel',
                           onPressed: () => Navigator.pop(context, true),
-                          icon: const Icon(Icons.edit_rounded),
+                          icon: const Icon(IconlyLight.edit),
                           style: IconButton.styleFrom(
                             backgroundColor: AppTheme.maroonSurface,
                             foregroundColor: AppTheme.maroon,
@@ -746,13 +751,13 @@ class _UserFormDialogState extends State<_UserFormDialog> {
               _buildFormField(
                 controller: _nameController,
                 label: 'Nama Lengkap',
-                icon: Icons.person_rounded,
+                icon: IconlyLight.profile,
               ),
               const SizedBox(height: 14),
               _buildFormField(
                 controller: _passwordController,
                 label: _isEdit ? 'Password baru (opsional)' : 'Password',
-                icon: Icons.lock_rounded,
+                icon: IconlyLight.lock,
                 obscureText: true,
               ),
               if (_isMahasiswa) ...[
@@ -764,7 +769,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                 _buildFormField(
                   controller: _rfidController,
                   label: 'RFID UID (opsional)',
-                  icon: Icons.nfc_rounded,
+                  icon: IconlyLight.scan,
                 ),
               ],
               if (_errorText != null) ...[
@@ -923,7 +928,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   Widget _buildAngkatanSelector() {
     return _buildSelectionShell(
       label: 'Angkatan',
-      icon: Icons.date_range_rounded,
+      icon: IconlyLight.calendar,
       child: Wrap(
         spacing: 8,
         runSpacing: 8,

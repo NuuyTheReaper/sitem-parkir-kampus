@@ -1,3 +1,4 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../core/app_theme.dart';
@@ -99,7 +100,7 @@ class ModernEmptyState extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
-                icon: const Icon(Icons.add_rounded, size: 20),
+                icon: const Icon(IconlyLight.plus, size: 20),
                 label: Text(actionLabel!,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,

@@ -1,3 +1,4 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
@@ -28,10 +29,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   ];
 
   final List<NavBarItem> _navItems = const [
-    NavBarItem(label: 'Overview', icon: Icons.dashboard_rounded),
-    NavBarItem(label: 'Kelola', icon: Icons.settings_rounded),
+    NavBarItem(label: 'Overview', icon: IconlyLight.category),
+    NavBarItem(label: 'Kelola', icon: IconlyLight.setting),
     NavBarItem(label: 'Aktivitas', icon: Icons.receipt_long_rounded),
-    NavBarItem(label: 'Profil', icon: Icons.person_rounded),
+    NavBarItem(label: 'Profil', icon: IconlyLight.profile),
   ];
 
   @override

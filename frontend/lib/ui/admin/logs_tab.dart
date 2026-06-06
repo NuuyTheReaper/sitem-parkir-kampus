@@ -1,9 +1,11 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_client.dart';
 import '../../core/app_theme.dart';
 import '../../core/constants.dart';
 import '../../core/platform_link.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class LogsTab extends ConsumerStatefulWidget {
   const LogsTab({super.key});
@@ -21,6 +23,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
   ];
   String _typeFilter = 'semua';
   String _periodFilter = 'semua';
+  bool _isFilterExpanded = false;
 
   Future<List<dynamic>> fetchLogs() async {
     final response = await ref.read(dioProvider).get('admin/reports');
@@ -101,8 +104,8 @@ class _LogsTabState extends ConsumerState<LogsTab> {
       label: Text(label),
       selected: selected,
       onSelected: (_) => onSelected(),
+      showCheckmark: false, // Menghilangkan ikon centang
       selectedColor: AppTheme.maroon,
-      checkmarkColor: Colors.white,
       labelStyle: TextStyle(
         color: selected ? Colors.white : AppTheme.maroon,
         fontWeight: FontWeight.w600,
@@ -111,7 +114,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
       side: const BorderSide(color: AppTheme.maroon),
       backgroundColor: Colors.white,
       visualDensity: VisualDensity.compact,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12), // Sesuaikan padding agar lebih rapi tanpa centang
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
@@ -169,7 +172,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
         visualDensity: VisualDensity.compact,
       ),
       onPressed: _exportCsv,
-      icon: const Icon(Icons.download_rounded, size: 16),
+      icon: const Icon(IconlyLight.download, size: 16),
       label: const Text(
         'CSV',
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
@@ -180,79 +183,63 @@ class _LogsTabState extends ConsumerState<LogsTab> {
   Widget _buildFilterBar() {
     return Container(
       color: AppTheme.maroonSurface,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 420;
-          final typeChips = _buildTypeFilterChips();
-          final periodChips = _buildPeriodFilterChips();
-
-          if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _isFilterExpanded = !_isFilterExpanded),
+            child: Row(
               children: [
-                const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.filter_list_rounded,
-                      size: 18,
-                      color: AppTheme.maroon,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Filter:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.maroon,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _buildFilterGroup('Jenis', typeChips),
-                const SizedBox(height: 8),
-                _buildFilterGroup('Periode', periodChips),
-                const SizedBox(height: 8),
-                _buildExportButton(),
-              ],
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.filter_list_rounded,
-                size: 18,
-                color: AppTheme.maroon,
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Filter:',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
+                const Icon(
+                  Icons.filter_list_rounded,
+                  size: 20,
                   color: AppTheme.maroon,
-                  fontSize: 13,
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFilterGroup('Jenis', typeChips),
-                    const SizedBox(height: 8),
-                    _buildFilterGroup('Periode', periodChips),
-                  ],
+                const SizedBox(width: 8),
+                const Text(
+                  'Filter Laporan & Cetak',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.maroon,
+                    fontSize: 14,
+                  ),
                 ),
+                const Spacer(),
+                Icon(
+                  _isFilterExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: AppTheme.maroon,
+                ),
+              ],
+            ),
+          ),
+          if (_isFilterExpanded) ...[
+            const SizedBox(height: 16),
+            _buildFilterGroup('Jenis', _buildTypeFilterChips()),
+            const SizedBox(height: 12),
+            _buildFilterGroup('Periode', _buildPeriodFilterChips()),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.maroon,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
               ),
-              const SizedBox(width: 8),
-              _buildExportButton(),
-            ],
-          );
-        },
+              onPressed: _exportCsv,
+              icon: const Icon(IconlyLight.download, size: 18),
+              label: const Text(
+                'Cetak CSV Laporan',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ]
+        ],
       ),
     );
   }
@@ -277,7 +264,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.receipt_long_outlined,
+                      Icon(IconlyLight.document,
                           size: 64, color: Colors.grey[300]),
                       const SizedBox(height: 12),
                       const Text('Belum ada log aktivitas',
@@ -326,8 +313,8 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                             ),
                             child: Icon(
                               isMasuk
-                                  ? Icons.login_rounded
-                                  : Icons.logout_rounded,
+                                  ? IconlyLight.login
+                                  : IconlyLight.logout,
                               color: isMasuk ? Colors.green : AppTheme.maroon,
                               size: 22,
                             ),
@@ -390,7 +377,10 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                         ],
                       ),
                     ),
-                  );
+                  )
+                      .animate(delay: (index * 50).ms)
+                      .fadeIn(duration: 300.ms)
+                      .slideX(begin: 0.05, end: 0, duration: 300.ms, curve: Curves.easeOut);
                 },
               );
             },

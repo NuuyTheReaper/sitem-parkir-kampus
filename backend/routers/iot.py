@@ -13,12 +13,13 @@ Alur Validasi Ganda:
   4. Backend kirim response → ESP32 buka/tutup gerbang
 """
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 import asyncio
 import logging
 import httpx
+import os
 
 from core.security import get_petugas
 from core.config import settings
@@ -135,7 +136,7 @@ async def petugas_notification_ws(websocket: WebSocket):
 # ═══════════════════════════════════════════════════════════════════
 
 @router.post("/ml/plate-detect", response_model=MLPlateDetectionResponse)
-async def receive_ml_plate_detection(request: MLPlateDetectionRequest):
+async def receive_ml_plate_detection(request: MLPlateDetectionRequest, db: Session = Depends(get_db)):
     """
     Endpoint untuk ML Service mengirim hasil deteksi plat nomor.
     
@@ -160,9 +161,42 @@ async def receive_ml_plate_detection(request: MLPlateDetectionRequest):
         f"{request.detected_plate} (conf: {request.confidence:.2f})"
     )
     
+    # Otomatis buat antrean 'Permintaan Gerbang' jika plat milik tamu darurat
+    guest = db.query(models.EmergencyGuest).filter(
+        models.EmergencyGuest.plat_nomor == request.detected_plate,
+        models.EmergencyGuest.status == "di_dalam"
+    ).first()
+    
+    msg_suffix = ""
+    if guest and "keluar" in request.gate_id.lower():
+        existing = db.query(models.AccessRequest).filter(
+            models.AccessRequest.emergency_guest_id == guest.id,
+            models.AccessRequest.status == models.AccessRequestStatusEnum.pending
+        ).first()
+        if not existing:
+            new_req = models.AccessRequest(
+                emergency_guest_id=guest.id,
+                jenis_aktivitas=models.ActivityTypeEnum.keluar,
+            )
+            db.add(new_req)
+            db.commit()
+            db.refresh(new_req)
+            msg_suffix = " (Permintaan Keluar Darurat Dibuat)"
+            try:
+                await petugas_notifier.notify_new_request({
+                    "user_nama": guest.nama + " (Darurat)",
+                    "user_nim": "TAMU DARURAT",
+                    "vehicle_plat": guest.plat_nomor,
+                    "vehicle_jenis": "Mobil/Motor",
+                    "jenis_aktivitas": "keluar",
+                    "request_id": new_req.id,
+                })
+            except Exception:
+                pass
+    
     return MLPlateDetectionResponse(
         status="received",
-        message=f"Plate '{request.detected_plate}' stored for gate {request.gate_id}",
+        message=f"Plate '{request.detected_plate}' stored for gate {request.gate_id}{msg_suffix}",
         gate_id=request.gate_id,
     )
 
@@ -228,6 +262,98 @@ async def capture_and_validate_gate(
     return await _run_dual_validation(dual_request, db)
 
 
+@router.post("/upload-validate", response_model=DualValidationResponse)
+async def upload_and_validate_gate(
+    rfid_uid: str = Form(..., description="UID kartu RFID yang di-tap"),
+    gate_type: str = Form(..., description="'masuk' atau 'keluar'"),
+    gate_id: str = Form("GATE_DEFAULT", description="ID gerbang fisik"),
+    file: UploadFile = File(..., description="Foto dari ESP32-CAM"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint untuk ESP32-CAM mengirim RFID UID dan foto yang ditangkap secara bersamaan.
+    
+    Alur:
+    1. Simpan foto yang diupload ke folder uploads/scans/.
+    2. Kirim foto ke ML Service via POST multipart file.
+    3. Jalankan alur validasi ganda menggunakan RFID + hasil ML.
+    """
+    if gate_type not in ["masuk", "keluar"]:
+        raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
+        
+    # 1. Simpan foto
+    uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+    scans_dir = os.path.join(uploads_dir, "scans")
+    os.makedirs(scans_dir, exist_ok=True)
+    
+    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    clean_gate_id = "".join([c for c in gate_id if c.isalnum() or c in ["_", "-"]])
+    filename = f"{clean_gate_id}_{timestamp_str}.jpg"
+    file_path = os.path.join(scans_dir, filename)
+    relative_path = f"/uploads/scans/{filename}"
+    
+    try:
+        content = await file.read()
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+    except Exception as e:
+        logger.error(f"Gagal menyimpan foto upload ESP32-CAM: {e}")
+        raise HTTPException(status_code=500, detail="Gagal menyimpan foto di backend")
+        
+    # 2. Kirim ke ML Service untuk scan plat
+    ml_url = f"{settings.ANPR_SERVICE_URL.rstrip('/')}/api/predict-image"
+    try:
+        async with httpx.AsyncClient(timeout=settings.ANPR_SCAN_TIMEOUT_SECONDS) as client:
+            files = {"file": (filename, content, "image/jpeg")}
+            data = {"gate_id": gate_id}
+            response = await client.post(ml_url, files=files, data=data)
+            response.raise_for_status()
+            ml_result = response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text[:300] if exc.response is not None else str(exc)
+        logger.error(f"[ANPR] ML Service error for upload: {detail}")
+        await manager.broadcast({
+            "type": "error",
+            "message": f"ML Service error saat membaca plat dari foto: {detail}",
+            "rfid": rfid_uid,
+            "gate": gate_id,
+            "image_path": relative_path,
+        })
+        return DualValidationResponse(
+            action="keep_closed",
+            message="ML service gagal membaca plat",
+            validation_detail=detail,
+        )
+    except (httpx.TimeoutException, httpx.RequestError) as exc:
+        logger.error(f"[ANPR] ML Service unavailable: {exc}")
+        await manager.broadcast({
+            "type": "error",
+            "message": "ML Service tidak merespons",
+            "rfid": rfid_uid,
+            "gate": gate_id,
+            "image_path": relative_path,
+        })
+        return DualValidationResponse(
+            action="keep_closed",
+            message="ML service tidak bisa dihubungi",
+            validation_detail=str(exc),
+        )
+        
+    # 3. Jalankan alur validasi ganda
+    detected_plate = ml_result.get("detected_plate", "")
+    confidence = ml_result.get("confidence", 0.0)
+    
+    dual_request = DualValidationRequest(
+        rfid_uid=rfid_uid,
+        detected_plate=detected_plate,
+        ml_confidence=confidence,
+        gate_type=gate_type,
+        gate_id=gate_id
+    )
+    
+    return await _run_dual_validation(dual_request, db, image_path=relative_path)
+
+
 async def _request_anpr_scan(gate_id: str, camera_url: str | None = None) -> ANPRScanResponse:
     """Call the separated ANPR service and normalize connection errors."""
     base_url = settings.ANPR_SERVICE_URL.rstrip("/")
@@ -258,6 +384,7 @@ async def _request_anpr_scan(gate_id: str, camera_url: str | None = None) -> ANP
 async def _run_dual_validation(
     request: DualValidationRequest,
     db: Session,
+    image_path: str = None,
 ) -> DualValidationResponse:
     """
     ★ ENDPOINT VALIDASI GANDA ★
@@ -294,6 +421,7 @@ async def _run_dual_validation(
             "rfid": request.rfid_uid,
             "plate": request.detected_plate,
             "gate": request.gate_id,
+            "image_path": image_path,
         })
         logger.warning(f"[GATE] Unregistered RFID: {request.rfid_uid}")
         return DualValidationResponse(
@@ -310,6 +438,7 @@ async def _run_dual_validation(
             "rfid": request.rfid_uid,
             "plate": request.detected_plate,
             "user": user.nama,
+            "image_path": image_path,
         })
         return DualValidationResponse(
             action="keep_closed",
@@ -331,6 +460,7 @@ async def _run_dual_validation(
             "message": f"Mahasiswa {user.nama}: belum ada kendaraan yang disetujui.",
             "user": user.nama,
             "plate": request.detected_plate,
+            "image_path": image_path,
         })
         return DualValidationResponse(
             action="keep_closed",
@@ -364,6 +494,7 @@ async def _run_dual_validation(
             ),
             "user": user.nama,
             "plate": request.detected_plate,
+            "image_path": image_path,
         })
         
         logger.warning(
@@ -389,6 +520,7 @@ async def _run_dual_validation(
             ),
             "user": user.nama,
             "plate": request.detected_plate,
+            "image_path": image_path,
         })
         return DualValidationResponse(
             action="keep_closed",
@@ -466,6 +598,7 @@ async def _run_dual_validation(
         "plate": target_vehicle.plat_nomor,
         "time": log.waktu.isoformat(),
         "gate": request.gate_id,
+        "image_path": image_path,
     })
     
     logger.info(
@@ -549,23 +682,71 @@ async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)
 # ═══════════════════════════════════════════════════════════════════
 
 @router.post("/emergency-action")
-async def emergency_gate_action(gate: str, reason: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_petugas)):
+async def emergency_gate_action(
+    gate: str, 
+    reason: str, 
+    nama: str = None, 
+    kendaraan: str = None, 
+    guest_id: int = None,
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_petugas)
+):
     """Petugas manual override to open gate in emergency."""
     if gate not in ["masuk", "keluar"]:
         raise HTTPException(status_code=400, detail="Gate must be 'masuk' or 'keluar'")
         
+    display_name = current_user.nama
+    display_plate = "MANUAL"
+
+    if gate == "masuk":
+        if not nama or not kendaraan:
+            raise HTTPException(status_code=400, detail="Nama dan kendaraan wajib diisi untuk gate masuk")
+            
+        guest = models.EmergencyGuest(
+            nama=nama,
+            plat_nomor=kendaraan,
+            alasan=reason,
+            petugas_masuk_id=current_user.id
+        )
+        db.add(guest)
+        db.commit()
+        db.refresh(guest)
+        display_name = guest.nama
+        display_plate = guest.plat_nomor
+        
+    elif gate == "keluar":
+        if guest_id:
+            guest = db.query(models.EmergencyGuest).filter(
+                models.EmergencyGuest.id == guest_id,
+                models.EmergencyGuest.status == "di_dalam"
+            ).first()
+            
+            if guest:
+                guest.waktu_keluar = datetime.now(timezone.utc)
+                guest.petugas_keluar_id = current_user.id
+                guest.status = "sudah_keluar"
+                db.commit()
+                display_name = guest.nama
+                display_plate = guest.plat_nomor
+            else:
+                display_name = "Guest Not Found"
+        else:
+            # Manual exit without guest_id
+            if not nama or not kendaraan:
+                raise HTTPException(status_code=400, detail="Nama dan kendaraan wajib diisi jika tidak memilih tamu dari daftar")
+            display_name = nama
+            display_plate = kendaraan
+
     # Broadcast to live monitor so it shows up in logs
     await manager.broadcast({
         "type": "error", # Highlight as yellow/warning in UI
         "message": f"🚨 EMERGENCY OVERRIDE ({gate.upper()})",
-        "user": current_user.nama,
-        "plate": "MANUAL",
+        "user": display_name,
+        "plate": display_plate,
         "remark": reason
     })
     
     # Log it as manual_petugas activity
-    # Note: We don't have a specific vehicle/user for emergency, 
-    # we'll link it to the PETUGAS themselves as user_id for logging.
     new_log = models.ParkingLog(
         user_id=current_user.id,
         vehicle_id=1, # Dummy or generic ID for emergency
@@ -575,7 +756,21 @@ async def emergency_gate_action(gate: str, reason: str, db: Session = Depends(ge
     db.add(new_log)
     db.commit()
     
-    return {"status": "success", "message": f"Gate {gate} dibuka manual"}
+    return {"status": "success", "message": f"Gate {gate} dibuka manual untuk {display_name}"}
+
+@router.get("/emergency-guests")
+def get_emergency_guests(db: Session = Depends(get_db), current_user: models.User = Depends(get_petugas)):
+    """Mendapatkan daftar tamu darurat yang masih di dalam."""
+    guests = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.status == "di_dalam").all()
+    return [
+        {
+            "id": g.id,
+            "nama": g.nama,
+            "plat_nomor": g.plat_nomor,
+            "alasan": g.alasan,
+            "waktu_masuk": g.waktu_masuk.isoformat()
+        } for g in guests
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════

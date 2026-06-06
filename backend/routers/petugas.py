@@ -71,7 +71,7 @@ def get_pending_access_requests(db: Session = Depends(get_db)):
     return result
 
 @router.put("/access-requests/{request_id}/respond")
-def respond_to_access_request(request_id: int, action: str, catatan: str = "", db: Session = Depends(get_db)):
+async def respond_to_access_request(request_id: int, action: str, catatan: str = "", db: Session = Depends(get_db)):
     from datetime import datetime, timezone
     if action not in ["disetujui", "ditolak"]:
         raise HTTPException(status_code=400, detail="Action harus 'disetujui' atau 'ditolak'")
@@ -110,6 +110,10 @@ def respond_to_access_request(request_id: int, action: str, catatan: str = "", d
                 status_akses=models.AccessStatusEnum.manual_petugas
             )
             db.add(new_log)
+            
+        # Trigger physical servo via Firebase Realtime Database
+        from core.firebase import trigger_physical_servo
+        await trigger_physical_servo()
     
     db.commit()
     

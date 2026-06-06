@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     ANPR_SERVICE_URL: str = "http://127.0.0.1:5000"
     ANPR_SCAN_TIMEOUT_SECONDS: float = 15.0
 
+    # Firebase Realtime Database Settings for physical servo integration
+    FIREBASE_DB_URL: str = ""
+    FIREBASE_DB_SECRET: str = ""
+
     class Config:
         env_file = ".env"
 

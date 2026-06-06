@@ -756,7 +756,12 @@ async def emergency_gate_action(
     db.add(new_log)
     db.commit()
     
+    # Trigger physical servo via Firebase Realtime Database
+    from core.firebase import trigger_physical_servo
+    await trigger_physical_servo()
+    
     return {"status": "success", "message": f"Gate {gate} dibuka manual untuk {display_name}"}
+
 
 @router.get("/emergency-guests")
 def get_emergency_guests(db: Session = Depends(get_db), current_user: models.User = Depends(get_petugas)):

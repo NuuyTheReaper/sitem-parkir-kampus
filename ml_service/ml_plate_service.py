@@ -237,7 +237,7 @@ async def health_check():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  🤖 ML PLATE DETECTION SERVICE")
+    print("  ML PLATE DETECTION SERVICE")
     print(f"  Mode: {'PRODUCTION (Real ML)' if USE_REAL_ML else 'DEVELOPMENT (Simulator)'}")
     print("  Endpoint: http://127.0.0.1:5000")
     print("=" * 60)

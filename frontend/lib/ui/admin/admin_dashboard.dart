@@ -38,17 +38,8 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppHeader(
+      appBar: const AppHeader(
         title: 'Admin Dashboard',
-        onLogout: () async {
-          await ref.read(authProvider.notifier).logout();
-          if (context.mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-              (route) => false,
-            );
-          }
-        },
       ),
       body: IndexedStack(
         index: _currentIndex,

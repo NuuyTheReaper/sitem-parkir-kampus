@@ -4,6 +4,7 @@ import '../../core/app_theme.dart';
 import 'users_tab.dart';
 import 'prodi_tab.dart';
 
+
 /// Management Tab - Simplified management interface
 /// Includes: Users (Mahasiswa + Petugas) and Prodi
 class ManagementTab extends ConsumerStatefulWidget {
@@ -62,7 +63,7 @@ class _ManagementTabState extends ConsumerState<ManagementTab>
                 iconMargin: EdgeInsets.only(bottom: 4),
               ),
               Tab(
-                icon: Icon(Icons.account_balance_rounded, size: 20),
+                icon: const Icon(Icons.account_balance_rounded, size: 20),
                 text: 'Prodi',
                 iconMargin: EdgeInsets.only(bottom: 4),
               ),

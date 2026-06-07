@@ -37,25 +37,41 @@ def get_pending_access_requests(db: Session = Depends(get_db)):
     
     result = []
     for r in requests:
-        user = db.query(models.User).filter(models.User.id == r.user_id).first()
-        vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == r.vehicle_id).first()
-        result.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "user_nama": user.nama if user else "Unknown",
-            "user_nim": user.nim_npp if user else "Unknown",
-            "rfid_uid": user.rfid_uid if user else None,
-            "vehicle_plat": vehicle.plat_nomor if vehicle else "Unknown",
-            "vehicle_jenis": vehicle.jenis_kendaraan if vehicle else "Unknown",
-            "jenis_aktivitas": r.jenis_aktivitas,
-            "waktu_request": r.waktu_request.isoformat() if r.waktu_request else None,
-            "is_flagged": user.is_flagged == 1 if user else False,
-            "flag_reason": user.flag_reason if user else None,
-        })
+        if r.emergency_guest_id:
+            guest = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.id == r.emergency_guest_id).first()
+            result.append({
+                "id": r.id,
+                "user_id": None,
+                "user_nama": guest.nama + " (Tamu Darurat)" if guest else "Unknown Darurat",
+                "user_nim": "Tamu Darurat",
+                "rfid_uid": None,
+                "vehicle_plat": guest.plat_nomor if guest else "Unknown",
+                "vehicle_jenis": "Mobil/Motor",
+                "jenis_aktivitas": r.jenis_aktivitas,
+                "waktu_request": r.waktu_request.isoformat() if r.waktu_request else None,
+                "is_flagged": False,
+                "flag_reason": None,
+            })
+        else:
+            user = db.query(models.User).filter(models.User.id == r.user_id).first()
+            vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == r.vehicle_id).first()
+            result.append({
+                "id": r.id,
+                "user_id": r.user_id,
+                "user_nama": user.nama if user else "Unknown",
+                "user_nim": user.nim_npp if user else "Unknown",
+                "rfid_uid": user.rfid_uid if user else None,
+                "vehicle_plat": vehicle.plat_nomor if vehicle else "Unknown",
+                "vehicle_jenis": vehicle.jenis_kendaraan if vehicle else "Unknown",
+                "jenis_aktivitas": r.jenis_aktivitas,
+                "waktu_request": r.waktu_request.isoformat() if r.waktu_request else None,
+                "is_flagged": user.is_flagged == 1 if user else False,
+                "flag_reason": user.flag_reason if user else None,
+            })
     return result
 
 @router.put("/access-requests/{request_id}/respond")
-def respond_to_access_request(request_id: int, action: str, catatan: str = "", db: Session = Depends(get_db)):
+async def respond_to_access_request(request_id: int, action: str, catatan: str = "", db: Session = Depends(get_db)):
     from datetime import datetime, timezone
     if action not in ["disetujui", "ditolak"]:
         raise HTTPException(status_code=400, detail="Action harus 'disetujui' atau 'ditolak'")
@@ -72,13 +88,32 @@ def respond_to_access_request(request_id: int, action: str, catatan: str = "", d
     
     # If approved, create the actual ParkingLog
     if action == "disetujui":
-        new_log = models.ParkingLog(
-            user_id=req.user_id,
-            vehicle_id=req.vehicle_id,
-            jenis_aktivitas=req.jenis_aktivitas,
-            status_akses=models.AccessStatusEnum.manual_petugas
-        )
-        db.add(new_log)
+        if req.emergency_guest_id:
+            guest = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.id == req.emergency_guest_id).first()
+            if guest:
+                guest.waktu_keluar = datetime.now(timezone.utc)
+                guest.status = "sudah_keluar"
+                
+            # Log as manual for emergency
+            new_log = models.ParkingLog(
+                user_id=1, # Default user or you could skip if nullable
+                vehicle_id=1, # Default vehicle or you could skip if nullable
+                jenis_aktivitas=req.jenis_aktivitas,
+                status_akses=models.AccessStatusEnum.manual_petugas
+            )
+            db.add(new_log)
+        else:
+            new_log = models.ParkingLog(
+                user_id=req.user_id,
+                vehicle_id=req.vehicle_id,
+                jenis_aktivitas=req.jenis_aktivitas,
+                status_akses=models.AccessStatusEnum.manual_petugas
+            )
+            db.add(new_log)
+            
+        # Trigger physical servo via Firebase Realtime Database
+        from core.firebase import trigger_physical_servo
+        await trigger_physical_servo()
     
     db.commit()
     

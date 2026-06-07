@@ -1,3 +1,4 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
@@ -14,6 +15,28 @@ class ProfileTab extends ConsumerStatefulWidget {
 
 class _ProfileTabState extends ConsumerState<ProfileTab> {
   String _currentScreen = 'main'; // main, account, security, changePassword
+  late Future<Map<String, dynamic>?> _profileFuture;
+  late final TextEditingController _oldPwCtrl;
+  late final TextEditingController _newPwCtrl;
+  late final TextEditingController _confirmPwCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = ref.read(authProvider.notifier).getProfile();
+    _oldPwCtrl = TextEditingController();
+    _newPwCtrl = TextEditingController();
+    _confirmPwCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _oldPwCtrl.dispose();
+    _newPwCtrl.dispose();
+    _confirmPwCtrl.dispose();
+    super.dispose();
+  }
+
 
   // Menyesuaikan menu tile capsule melengkung penuh sesuai gambar
   Widget _buildMenuTile({
@@ -174,7 +197,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                                 radius: 52,
                                 backgroundColor: AppTheme.maroonSurface,
                                 child: Icon(
-                                  Icons.person,
+                                  IconlyLight.profile,
                                   size: 55,
                                   color: AppTheme.maroon,
                                 ),
@@ -268,7 +291,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                     onTap: () => setState(() => _currentScreen = 'changePassword'),
                   ),
                   _buildMenuTile(
-                    icon: Icons.logout_rounded,
+                    icon: IconlyLight.logout,
                     title: 'Keluar',
                     iconColor: Colors.redAccent,
                     onTap: () async {
@@ -328,10 +351,13 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
     );
   }
 
+  void _clearPasswordFields() {
+    _oldPwCtrl.clear();
+    _newPwCtrl.clear();
+    _confirmPwCtrl.clear();
+  }
+
   Widget _buildChangePasswordScreen() {
-    final oldPwCtrl = TextEditingController();
-    final newPwCtrl = TextEditingController();
-    final confirmPwCtrl = TextEditingController();
     bool isLoading = false;
     bool obscureOld = true;
     bool obscureNew = true;
@@ -344,7 +370,10 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
           title: const Text('Ganti Password', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded, color: Colors.black),
-            onPressed: () => setState(() => _currentScreen = 'main'),
+            onPressed: () {
+              _clearPasswordFields();
+              setState(() => _currentScreen = 'main');
+            },
           ),
           backgroundColor: Colors.white,
           elevation: 0,
@@ -355,11 +384,11 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(
-                controller: oldPwCtrl,
+                controller: _oldPwCtrl,
                 obscureText: obscureOld,
                 decoration: InputDecoration(
                   labelText: 'Password Lama',
-                  prefixIcon: const Icon(Icons.lock_rounded, size: 20),
+                  prefixIcon: const Icon(IconlyLight.lock, size: 20),
                   suffixIcon: IconButton(
                     icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility, size: 20),
                     onPressed: () => setScreenState(() => obscureOld = !obscureOld),
@@ -368,7 +397,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: newPwCtrl,
+                controller: _newPwCtrl,
                 obscureText: obscureNew,
                 decoration: InputDecoration(
                   labelText: 'Password Baru',
@@ -381,7 +410,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: confirmPwCtrl,
+                controller: _confirmPwCtrl,
                 obscureText: obscureConfirm,
                 decoration: InputDecoration(
                   labelText: 'Konfirmasi Password Baru',
@@ -425,13 +454,13 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                   onPressed: isLoading
                       ? null
                       : () async {
-                          if (newPwCtrl.text.length < 6) {
+                          if (_newPwCtrl.text.length < 6) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('Password baru minimal 6 karakter')),
                             );
                             return;
                           }
-                          if (newPwCtrl.text != confirmPwCtrl.text) {
+                          if (_newPwCtrl.text != _confirmPwCtrl.text) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('Konfirmasi password tidak cocok')),
                             );
@@ -440,10 +469,11 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                           setScreenState(() => isLoading = true);
                           try {
                             await ref.read(dioProvider).post('auth/change-password', data: {
-                              'old_password': oldPwCtrl.text,
-                              'new_password': newPwCtrl.text,
+                              'old_password': _oldPwCtrl.text,
+                              'new_password': _newPwCtrl.text,
                             });
-                            if (!mounted) return;
+                            if (!context.mounted) return;
+                            _clearPasswordFields();
                             setState(() => _currentScreen = 'main');
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -454,7 +484,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                             );
                           } catch (e) {
                             setScreenState(() => isLoading = false);
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             String msg = 'Gagal mengubah password';
                             if (e.toString().contains('400')) {
                               msg = 'Password lama salah';
@@ -483,7 +513,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>?>(
-      future: ref.read(authProvider.notifier).getProfile(),
+      future: _profileFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: AppTheme.maroon));

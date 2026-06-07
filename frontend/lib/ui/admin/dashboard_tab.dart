@@ -1,8 +1,10 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../providers/admin_provider.dart';
 import '../../core/app_theme.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/api_client.dart';
 import '../shared/parking_chart.dart';
 
@@ -151,7 +153,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                         borderRadius: BorderRadius.circular(12)),
                     child: Row(
                       children: [
-                        const Icon(Icons.timer_outlined, size: 20),
+                        const Icon(Icons.access_time_rounded, size: 20),
                         const SizedBox(width: 12),
                         Text(_selectedExpiry == null
                             ? 'Set Waktu Daluwarsa'
@@ -250,7 +252,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                               color: Colors.white.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(Icons.dashboard_rounded,
+                            child: const Icon(IconlyLight.category,
                                 color: Colors.white, size: 24),
                           ),
                           const SizedBox(width: 16),
@@ -313,17 +315,19 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                         child: _StatCard(
                             label: 'Total Mahasiswa',
                             value: stats['total_mahasiswa'].toString(),
-                            icon: Icons.school_rounded,
+                            icon: Icons.people_rounded,
                             color: AppTheme.maroon,
                             bgColor: AppTheme.maroonSurface)),
                     const SizedBox(width: 16),
                     Expanded(
                         child: _StatCard(
-                            label: 'Total Petugas',
-                            value: stats['total_petugas'].toString(),
-                            icon: Icons.badge_rounded,
-                            color: const Color(0xFF3B82F6),
-                            bgColor: const Color(0xFFEFF6FF))),
+                          icon: Icons.admin_panel_settings_rounded,
+                          label: 'Total Petugas',
+                          value: '${stats['total_petugas']}',
+                          color: Colors.blue,
+                          bgColor: Colors.blue.withOpacity(0.08),
+                          delayMs: 50,
+                        )),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -331,19 +335,23 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                   children: [
                     Expanded(
                         child: _StatCard(
-                            label: 'Masuk Hari Ini',
-                            value: stats['masuk_today'].toString(),
-                            icon: Icons.login_rounded,
-                            color: const Color(0xFF16A34A),
-                            bgColor: const Color(0xFFF0FDF4))),
+                          icon: Icons.login_rounded,
+                          label: 'Masuk Hari Ini',
+                          value: '${stats['masuk_today'] ?? 0}',
+                          color: Colors.green,
+                          bgColor: Colors.green.withOpacity(0.08),
+                          delayMs: 100,
+                        )),
                     const SizedBox(width: 16),
                     Expanded(
                         child: _StatCard(
-                            label: 'Keluar Hari Ini',
-                            value: stats['keluar_today'].toString(),
-                            icon: Icons.logout_rounded,
-                            color: const Color(0xFFF59E0B),
-                            bgColor: const Color(0xFFFFF7ED))),
+                          icon: Icons.output_rounded,
+                          label: 'Keluar Hari Ini',
+                          value: '${stats['keluar_today'] ?? 0}',
+                          color: Colors.orange,
+                          bgColor: Colors.orange.withOpacity(0.08),
+                          delayMs: 150,
+                        )),
                   ],
                 ),
                 const SizedBox(height: 28),
@@ -408,7 +416,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: _selectExpiry,
-                              icon: const Icon(Icons.timer_outlined, size: 18),
+                              icon: const Icon(Icons.access_time_rounded, size: 18),
                               label: Text(
                                   _selectedExpiry == null
                                       ? 'Set Daluwarsa (Opsional)'
@@ -424,7 +432,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                             IconButton(
                                 onPressed: () =>
                                     setState(() => _selectedExpiry = null),
-                                icon: const Icon(Icons.clear,
+                                icon: const Icon(Icons.close_rounded,
                                     size: 20, color: Colors.red)),
                           ],
                         ],
@@ -454,7 +462,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                 // Manage Announcements
                 const Row(
                   children: [
-                    Icon(Icons.list_alt_rounded,
+                    Icon(IconlyLight.document,
                         size: 20, color: AppTheme.maroon),
                     SizedBox(width: 8),
                     Text('Kelola Pengumuman',
@@ -488,7 +496,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                           color: Colors.grey[100],
                                           borderRadius:
                                               BorderRadius.circular(8)),
-                                      child: const Icon(Icons.person,
+                                      child: const Icon(IconlyLight.profile,
                                           size: 14, color: Colors.grey),
                                     ),
                                     const SizedBox(width: 8),
@@ -498,11 +506,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                             fontSize: 12)),
                                     const Spacer(),
                                     IconButton(
-                                        icon: const Icon(Icons.edit_rounded,
+                                        icon: const Icon(IconlyLight.edit,
                                             size: 18, color: Colors.blue),
                                         onPressed: () => _showEditDialog(ann)),
                                     IconButton(
-                                        icon: const Icon(Icons.delete_rounded,
+                                        icon: const Icon(IconlyLight.delete,
                                             size: 18, color: Colors.red),
                                         onPressed: () =>
                                             _deleteAnnouncement(ann['id'])),
@@ -536,7 +544,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                         child: Row(
                                           children: [
                                             const Icon(
-                                                Icons.auto_delete_outlined,
+                                                IconlyLight.delete,
                                                 size: 12,
                                                 color: Colors.orange),
                                             const SizedBox(width: 4),
@@ -572,13 +580,15 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final Color bgColor;
+  final int delayMs;
 
   const _StatCard(
       {required this.label,
       required this.value,
       required this.icon,
       required this.color,
-      required this.bgColor});
+      required this.bgColor,
+      this.delayMs = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -596,40 +606,51 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: color, size: 26),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.slate900,
+                    letterSpacing: -1.0,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value,
-                    style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.slate900,
-                        letterSpacing: -1.2)),
-                const SizedBox(height: 2),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.slate500,
-                        fontWeight: FontWeight.w500),
-                    overflow: TextOverflow.ellipsis),
-              ],
+          const SizedBox(height: 16),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppTheme.slate500,
+              fontWeight: FontWeight.w600,
             ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
-    );
+    )
+        .animate(delay: delayMs.ms)
+        .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+        .slideY(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'ui/auth/login_screen.dart';
+import 'ui/splash/splash_screen.dart';
 import 'core/app_theme.dart';
 
 void main() {
@@ -15,7 +16,7 @@ class SmartParkingApp extends StatelessWidget {
     return MaterialApp(
       title: 'Smart Campus Parking',
       theme: AppTheme.theme,
-      home: const LoginScreen(),
+      home: const SplashScreen(),
       debugShowCheckedModeBanner: false,
     );
   }

@@ -16,6 +16,9 @@ dependencies:
   fl_chart: ^0.66.2
   shimmer: ^3.0.0
   google_fonts: ^8.1.0
+  image_picker: ^1.2.2
+  iconly: ^1.0.1
+  flutter_animate: ^4.5.2
 
 dev_dependencies:
   flutter_test:

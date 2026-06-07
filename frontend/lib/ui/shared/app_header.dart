@@ -1,5 +1,7 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+
 
 /// Shared app header component for consistent header design across the app
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
@@ -80,7 +82,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.logout_rounded,
+                    icon: const Icon(IconlyLight.logout,
                         color: Colors.white, size: 20),
                     tooltip: 'Keluar',
                     onPressed: onLogout,

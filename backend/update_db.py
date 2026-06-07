@@ -41,6 +41,40 @@ def update_database():
             print("Table 'announcements' updated.")
         except Exception as e:
             print(f"Error updating announcements table: {e}")
+            
+        print("Updating 'emergency_guests' table...")
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS emergency_guests (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    nama VARCHAR(100) NOT NULL,
+                    plat_nomor VARCHAR(50) NOT NULL,
+                    alasan VARCHAR(255) NOT NULL,
+                    waktu_masuk DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    waktu_keluar DATETIME NULL,
+                    petugas_masuk_id INTEGER NOT NULL,
+                    petugas_keluar_id INTEGER NULL,
+                    status VARCHAR(20) DEFAULT 'di_dalam',
+                    FOREIGN KEY (petugas_masuk_id) REFERENCES users(id),
+                    FOREIGN KEY (petugas_keluar_id) REFERENCES users(id)
+                )
+            """))
+            print("Table 'emergency_guests' updated.")
+        except Exception as e:
+            print(f"Error updating emergency_guests table: {e}")
+            
+        print("Updating 'access_requests' table...")
+        try:
+            conn.execute(text("ALTER TABLE access_requests MODIFY user_id INTEGER NULL"))
+            conn.execute(text("ALTER TABLE access_requests MODIFY vehicle_id INTEGER NULL"))
+            try:
+                conn.execute(text("ALTER TABLE access_requests ADD COLUMN emergency_guest_id INTEGER NULL"))
+                conn.execute(text("ALTER TABLE access_requests ADD FOREIGN KEY (emergency_guest_id) REFERENCES emergency_guests(id)"))
+                print("Added 'emergency_guest_id' to access_requests.")
+            except Exception as e:
+                print(f"emergency_guest_id might already exist: {e}")
+        except Exception as e:
+            print(f"Error modifying access_requests: {e}")
         
         conn.commit()
 

@@ -7,6 +7,7 @@ import '../../core/api_client.dart';
 import '../../core/app_theme.dart';
 import '../../core/constants.dart';
 import '../../core/platform_file_picker.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../shared/profile_tab.dart';
 import '../shared/modern_components.dart';
 import '../shared/app_header.dart';
@@ -556,7 +557,10 @@ class _StatusTabState extends ConsumerState<StatusTab> {
                       ],
                     ),
                   ],
-                );
+                )
+                    .animate()
+                    .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+                    .slideY(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
               },
             ),
             
@@ -1167,7 +1171,10 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
                     ),
                   ],
                 ),
-              );
+              )
+                  .animate(delay: (index * 50).ms)
+                  .fadeIn(duration: 400.ms, curve: Curves.easeOut)
+                  .slideX(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
             },
           );
         },

@@ -1,3 +1,4 @@
+import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/admin_provider.dart';
@@ -31,7 +32,7 @@ class PetugasTab extends ConsumerWidget {
                     decoration: BoxDecoration(
                         color: Colors.orange.withOpacity(0.1),
                         shape: BoxShape.circle),
-                    child: const Icon(Icons.admin_panel_settings_rounded,
+                    child: const Icon(Icons.shield_rounded,
                         color: Colors.orange),
                   ),
                   const SizedBox(width: 16),
@@ -53,7 +54,7 @@ class PetugasTab extends ConsumerWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.edit_rounded,
+                        icon: const Icon(IconlyLight.edit,
                             color: Colors.blue, size: 20),
                         onPressed: () =>
                             _showUserDialog(context, ref, user: user),
@@ -61,7 +62,7 @@ class PetugasTab extends ConsumerWidget {
                         padding: const EdgeInsets.all(8),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete_rounded,
+                        icon: const Icon(IconlyLight.delete,
                             color: Colors.red, size: 20),
                         onPressed: () => _deleteUser(context, ref, user['id']),
                         constraints: const BoxConstraints(),
@@ -79,7 +80,7 @@ class PetugasTab extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showUserDialog(context, ref),
-        child: const Icon(Icons.add),
+        child: const Icon(IconlyLight.plus),
       ),
     );
   }
@@ -111,7 +112,7 @@ class PetugasTab extends ConsumerWidget {
                       decoration: BoxDecoration(
                           color: Colors.orange.withOpacity(0.1),
                           shape: BoxShape.circle),
-                      child: const Icon(Icons.admin_panel_settings_rounded,
+                      child: const Icon(Icons.shield_rounded,
                           color: Colors.orange, size: 28),
                     ),
                     const SizedBox(width: 16),
@@ -130,7 +131,7 @@ class PetugasTab extends ConsumerWidget {
                 TextField(
                     controller: nimController,
                     decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.badge_rounded),
+                        prefixIcon: const Icon(Icons.people_rounded),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16)))),
                 const SizedBox(height: 16),
@@ -143,7 +144,7 @@ class PetugasTab extends ConsumerWidget {
                 TextField(
                     controller: namaController,
                     decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.person_rounded),
+                        prefixIcon: const Icon(IconlyLight.profile),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16)))),
                 const SizedBox(height: 16),
@@ -156,7 +157,7 @@ class PetugasTab extends ConsumerWidget {
                 TextField(
                   controller: passwordController,
                   decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.lock_rounded),
+                      prefixIcon: const Icon(IconlyLight.lock),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16))),
                   obscureText: true,

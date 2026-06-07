@@ -45,8 +45,15 @@ async def upload_stnk(vehicle_id: int, file: UploadFile = File(...), current_use
         raise HTTPException(status_code=404, detail="Kendaraan tidak ditemukan")
     
     # Validate file type
+    import mimetypes
+    content_type = file.content_type
+    if content_type == "application/octet-stream" and file.filename:
+        guessed_type, _ = mimetypes.guess_type(file.filename)
+        if guessed_type:
+            content_type = guessed_type
+
     allowed_types = ["image/jpeg", "image/png", "image/webp"]
-    if file.content_type not in allowed_types:
+    if content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Format file harus JPG, PNG, atau WebP")
     
     # Save file

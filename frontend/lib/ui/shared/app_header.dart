@@ -39,8 +39,13 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white.withOpacity(0.2)),
                 ),
-                child: const Icon(Icons.local_parking,
-                    size: 18, color: Colors.white),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Image.asset(
+                    'assets/images/logo1.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               

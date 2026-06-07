@@ -31,11 +31,21 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
           child: Row(
             children: [
               // Logo
-              Image.asset(
-                'assets/images/logo1.png',
+              Container(
                 width: 36,
                 height: 36,
-                fit: BoxFit.contain,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Image.asset(
+                    'assets/images/logo1.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               

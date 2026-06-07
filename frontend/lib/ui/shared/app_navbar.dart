@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
 
-/// Shared bottom navigation bar component with curved notch and premium slide animations
+/// Shared bottom navigation bar component with a dome bulge and premium active-rise animation
 class AppNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -51,17 +51,14 @@ class AppNavBar extends StatelessWidget {
             return TweenAnimationBuilder<double>(
               tween: Tween<double>(begin: currentIndex.toDouble(), end: currentIndex.toDouble()),
               duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutBack, // Playful bounce for the sliding notch
+              curve: Curves.easeOutBack, // Playful bounce for the sliding dome bulge
               builder: (context, animValue, child) {
-                final double itemWidth = width / items.length;
-                final double activeX = (animValue + 0.5) * itemWidth;
-
                 return SizedBox(
-                  height: 88,
+                  height: 96,
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // 1. Custom Painted Curved Background
+                      // 1. Custom Painted Dome Bulge Background Card
                       Positioned.fill(
                         child: CustomPaint(
                           painter: NotchedNavbarPainter(
@@ -73,26 +70,12 @@ class AppNavBar extends StatelessWidget {
                         ),
                       ),
 
-                      // 2. Floating White Bubble in the notch
-                      Positioned(
-                        left: activeX - 7,
-                        top: 9,
-                        width: 14,
-                        height: 14,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-
-                      // 3. Row of Interactive Navigation Tabs
+                      // 2. Row of Interactive Navigation Tabs
                       Positioned(
                         left: 0,
                         right: 0,
-                        top: 16,
-                        height: 72,
+                        top: 0,
+                        height: 96,
                         child: Row(
                           children: items.asMap().entries.map((entry) {
                             final index = entry.key;
@@ -104,98 +87,75 @@ class AppNavBar extends StatelessWidget {
                                 onTap: () => onTap(index),
                                 behavior: HitTestBehavior.opaque,
                                 child: SizedBox(
-                                  height: 72,
+                                  height: 96,
                                   child: Stack(
                                     alignment: Alignment.center,
+                                    clipBehavior: Clip.none,
                                     children: [
-                                      // Inactive State: Gray Icon only (no label, matching reference image)
-                                      AnimatedOpacity(
-                                        opacity: isSelected ? 0.0 : 1.0,
-                                        duration: const Duration(milliseconds: 200),
-                                        child: isSelected
-                                            ? const SizedBox.shrink()
-                                            : Stack(
-                                                clipBehavior: Clip.none,
-                                                children: [
-                                                  Icon(
-                                                    item.icon,
-                                                    size: 24,
-                                                    color: AppTheme.slate400,
-                                                  ),
-                                                  if (item.badgeCount != null && item.badgeCount! > 0)
-                                                    Positioned(
-                                                      right: -6,
-                                                      top: -6,
-                                                      child: _buildBadge(item.badgeCount!),
+                                      // Transforming and Rising Icon Container
+                                      AnimatedPositioned(
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeOutBack, // Rises up with a satisfying bounce
+                                        top: isSelected ? 8 : 30, // Rises to y = 8 when active, nests inside the dome
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 300),
+                                          width: isSelected ? 48 : 36,
+                                          height: isSelected ? 48 : 36,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            gradient: isSelected
+                                                ? const LinearGradient(
+                                                    colors: [
+                                                      AppTheme.maroon,
+                                                      Color(0xFFA63333),
+                                                    ],
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                  )
+                                                : null,
+                                            boxShadow: isSelected
+                                                ? [
+                                                    BoxShadow(
+                                                      color: AppTheme.maroon.withOpacity(0.3),
+                                                      blurRadius: 8,
+                                                      offset: const Offset(0, 4),
                                                     ),
-                                                ],
+                                                  ]
+                                                : null,
+                                          ),
+                                          child: Stack(
+                                            alignment: Alignment.center,
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              Icon(
+                                                item.icon,
+                                                size: isSelected ? 22 : 24,
+                                                color: isSelected ? Colors.white : AppTheme.slate400,
                                               ),
+                                              if (item.badgeCount != null && item.badgeCount! > 0)
+                                                Positioned(
+                                                  right: isSelected ? -2 : -4,
+                                                  top: isSelected ? -2 : -4,
+                                                  child: _buildBadge(item.badgeCount!),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
 
-                                      // Active State: Floating Color Badge + Bold Label
-                                      AnimatedOpacity(
-                                        opacity: isSelected ? 1.0 : 0.0,
-                                        duration: const Duration(milliseconds: 200),
-                                        child: isSelected
-                                            ? Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  AnimatedScale(
-                                                    scale: isSelected ? 1.0 : 0.6,
-                                                    duration: const Duration(milliseconds: 300),
-                                                    curve: Curves.easeOutBack,
-                                                    child: Stack(
-                                                      clipBehavior: Clip.none,
-                                                      children: [
-                                                        Container(
-                                                          width: 42,
-                                                          height: 42,
-                                                          decoration: BoxDecoration(
-                                                            shape: BoxShape.circle,
-                                                            gradient: const LinearGradient(
-                                                              colors: [
-                                                                AppTheme.primary,
-                                                                Color(0xFFA63333), // Softer maroon gradient
-                                                              ],
-                                                              begin: Alignment.topLeft,
-                                                              end: Alignment.bottomRight,
-                                                            ),
-                                                            boxShadow: [
-                                                              BoxShadow(
-                                                                color: AppTheme.primary.withOpacity(0.3),
-                                                                blurRadius: 8,
-                                                                offset: const Offset(0, 3),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                          child: Icon(
-                                                            item.icon,
-                                                            size: 20,
-                                                            color: Colors.white,
-                                                          ),
-                                                        ),
-                                                        if (item.badgeCount != null && item.badgeCount! > 0)
-                                                          Positioned(
-                                                            right: -2,
-                                                            top: -2,
-                                                            child: _buildBadge(item.badgeCount!),
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    item.label.toUpperCase(),
-                                                    style: const TextStyle(
-                                                      color: AppTheme.primary,
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.w800,
-                                                      letterSpacing: 0.5,
-                                                    ),
-                                                  ),
-                                                ],
-                                              )
-                                            : const SizedBox.shrink(),
+                                      // Label Text: Placed at a fixed baseline at the bottom of the bar
+                                      Positioned(
+                                        bottom: 12,
+                                        child: AnimatedDefaultTextStyle(
+                                          duration: const Duration(milliseconds: 200),
+                                          style: TextStyle(
+                                            color: isSelected ? AppTheme.maroon : AppTheme.slate500,
+                                            fontSize: 10,
+                                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                            letterSpacing: -0.1,
+                                          ),
+                                          child: Text(item.label),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -217,7 +177,7 @@ class AppNavBar extends StatelessWidget {
   }
 }
 
-/// Custom Painter to draw a modern card shape with a smooth Bezier notch
+/// Custom Painter to draw a modern card shape with a smooth bulging dome shape
 class NotchedNavbarPainter extends CustomPainter {
   final double activeIndex;
   final int itemCount;
@@ -244,7 +204,7 @@ class NotchedNavbarPainter extends CustomPainter {
     final double width = size.width;
     final double height = size.height;
 
-    const double topY = 16.0;
+    const double topY = 20.0;
     const double cornerRadius = 24.0;
 
     final double itemWidth = width / itemCount;
@@ -263,10 +223,10 @@ class NotchedNavbarPainter extends CustomPainter {
       clockwise: true,
     );
 
-    // Draw the notch path at activeX
-    const double notchWidth = 90.0;
-    final double startX = activeX - notchWidth / 2;
-    final double endX = activeX + notchWidth / 2;
+    // Draw the dome bulge path centered at activeX
+    const double domeWidth = 90.0;
+    final double startX = activeX - domeWidth / 2;
+    final double endX = activeX + domeWidth / 2;
 
     if (startX > cornerRadius) {
       path.lineTo(startX, topY);
@@ -274,29 +234,17 @@ class NotchedNavbarPainter extends CustomPainter {
       path.lineTo(cornerRadius, topY);
     }
 
-    // Left shoulder and slope down
+    // Smooth curve rising up to dome peak (y = 0)
     path.cubicTo(
-      activeX - 32, topY,
-      activeX - 28, topY - 8,
-      activeX - 22, topY - 8,
+      activeX - 25, topY,
+      activeX - 20, 0,
+      activeX, 0,
     );
 
+    // Smooth curve falling back down to top baseline (y = topY)
     path.cubicTo(
-      activeX - 16, topY - 8,
-      activeX - 12, topY + 20,
-      activeX, topY + 20,
-    );
-
-    // Slope up and right shoulder
-    path.cubicTo(
-      activeX + 12, topY + 20,
-      activeX + 16, topY - 8,
-      activeX + 22, topY - 8,
-    );
-
-    path.cubicTo(
-      activeX + 28, topY - 8,
-      activeX + 32, topY,
+      activeX + 20, 0,
+      activeX + 25, topY,
       endX, topY,
     );
 
@@ -332,7 +280,7 @@ class NotchedNavbarPainter extends CustomPainter {
 
     path.close();
 
-    // Draw card shadows (dual layer for floating effect)
+    // Draw card shadows (dual layer for floating depth)
     canvas.save();
     canvas.translate(0, 4);
     canvas.drawPath(path, shadowPaint);

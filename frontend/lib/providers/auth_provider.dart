@@ -19,7 +19,7 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref ref;
   AuthNotifier(this.ref) : super(AuthState()) {
-    _loadSession();
+    loadSession();
   }
 
   String _readDioError(DioException e) {
@@ -36,7 +36,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return e.message ?? 'Login gagal';
   }
 
-  Future<void> _loadSession() async {
+  Future<void> loadSession() async {
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
     final nama = prefs.getString('user_nama');
@@ -47,6 +47,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'nama': nama ?? '',
         'nim_npp': nimNpp ?? '',
       });
+    } else {
+      state = AuthState();
     }
   }
 

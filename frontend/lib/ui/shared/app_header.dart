@@ -34,13 +34,16 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
               Container(
                 width: 36,
                 height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.asset(
+                      'assets/images/logo1.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-                child: const Icon(Icons.local_parking,
-                    size: 18, color: Colors.white),
               ),
               const SizedBox(width: 12),
               

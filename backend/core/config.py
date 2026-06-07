@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     ANPR_SCAN_TIMEOUT_SECONDS: float = 15.0
 
     # Firebase Realtime Database Settings for physical servo integration
-    FIREBASE_DB_URL: str = ""
-    FIREBASE_DB_SECRET: str = ""
+    FIREBASE_DB_URL: str = "https://parking-system-2546df-default-rtdb.firebaseio.com"
+    FIREBASE_DB_SECRET: str = "lwFhrCtxQwicVlNIuitXN98Dup4ESSdYSXKSKMdn"
 
     class Config:
         env_file = ".env"

@@ -1,6 +1,7 @@
 import 'package:iconly/iconly.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
 import '../../core/app_theme.dart';
 import '../../core/constants.dart';
@@ -24,37 +25,87 @@ class _LogsTabState extends ConsumerState<LogsTab> {
   String _typeFilter = 'semua';
   String _periodFilter = 'semua';
   bool _isFilterExpanded = false;
+  bool _isExporting = false;
 
   Future<List<dynamic>> fetchLogs() async {
     final response = await ref.read(dioProvider).get('admin/reports');
     return response.data;
   }
 
-  void _exportCsv() {
-    const url = '${AppConstants.baseUrl}admin/reports/export-csv';
-    final opened = openExternalUrl(url);
+  void _exportCsv() async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
+        content: const Row(
           children: [
-            Icon(
-              opened ? Icons.download_done_rounded : Icons.info_outline,
-              color: Colors.white,
-              size: 18,
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             ),
-            const SizedBox(width: 8),
-            Text(
-              opened
-                  ? 'Mengunduh laporan CSV...'
-                  : 'Export CSV tersedia di versi web.',
-            ),
+            SizedBox(width: 12),
+            Text('Menyiapkan laporan CSV...'),
           ],
         ),
-        backgroundColor: opened ? Colors.green : AppTheme.maroon,
+        backgroundColor: AppTheme.maroon,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
       ),
     );
+
+    try {
+      final response = await ref.read(dioProvider).get<List<int>>(
+        'admin/reports/export-csv',
+        options: Options(responseType: ResponseType.bytes),
+      );
+
+      if (response.data != null) {
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+        final filename = 'parking_logs_$timestamp.csv';
+        downloadBytes(response.data!, filename);
+
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.download_done_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text('Laporan CSV berhasil diunduh'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Gagal mengunduh CSV: ${e.toString()}')),
+            ],
+          ),
+          backgroundColor: AppTheme.maroon,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
   }
 
   String _typeLabel(String filter) {

@@ -23,8 +23,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    // Wait for minimum splash screen duration (e.g., 2.5 seconds for animations)
-    await Future.delayed(const Duration(milliseconds: 2500));
+    // Run both session load and minimum splash delay in parallel
+    await Future.wait([
+      ref.read(authProvider.notifier).loadSession(),
+      Future.delayed(const Duration(milliseconds: 2500)),
+    ]);
     
     if (!mounted) return;
 

@@ -46,10 +46,9 @@ class AppNavBar extends StatelessWidget {
         padding: const EdgeInsets.only(left: 20, right: 20, bottom: 12),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final double width = constraints.maxWidth;
 
             return TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: currentIndex.toDouble(), end: currentIndex.toDouble()),
+              tween: Tween<double>(end: currentIndex.toDouble()),
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeOutBack, // Playful bounce for the sliding dome bulge
               builder: (context, animValue, child) {
@@ -225,14 +224,10 @@ class NotchedNavbarPainter extends CustomPainter {
 
     // Draw the dome bulge path centered at activeX
     const double domeWidth = 90.0;
-    final double startX = activeX - domeWidth / 2;
-    final double endX = activeX + domeWidth / 2;
+    final double startX = (activeX - domeWidth / 2).clamp(cornerRadius, width - cornerRadius);
+    final double endX = (activeX + domeWidth / 2).clamp(cornerRadius, width - cornerRadius);
 
-    if (startX > cornerRadius) {
-      path.lineTo(startX, topY);
-    } else {
-      path.lineTo(cornerRadius, topY);
-    }
+    path.lineTo(startX, topY);
 
     // Smooth curve rising up to dome peak (y = 0)
     path.cubicTo(
@@ -248,12 +243,7 @@ class NotchedNavbarPainter extends CustomPainter {
       endX, topY,
     );
 
-    // Line to top-right corner
-    if (endX < width - cornerRadius) {
-      path.lineTo(width - cornerRadius, topY);
-    } else {
-      path.lineTo(width - cornerRadius, topY);
-    }
+    path.lineTo(width - cornerRadius, topY);
 
     // Top-right rounded corner
     path.arcToPoint(

@@ -13,7 +13,12 @@ class PickedFileBytes {
 
 Future<PickedFileBytes?> pickImageFile() async {
   final picker = ImagePicker();
-  final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+  final XFile? image = await picker.pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 1024,
+    maxHeight: 1024,
+    imageQuality: 80,
+  );
   
   if (image != null) {
     final bytes = await image.readAsBytes();

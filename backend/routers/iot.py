@@ -259,7 +259,7 @@ async def capture_and_validate_gate(
         gate_type=request.gate_type,
         gate_id=scan.gate_id,
     )
-    return await _run_dual_validation(dual_request, db)
+    return await _run_dual_validation(dual_request, db, image_path=scan.image_path)
 
 
 @router.post("/upload-validate", response_model=DualValidationResponse)

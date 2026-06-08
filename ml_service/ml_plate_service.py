@@ -86,6 +86,7 @@ app = FastAPI(title="ML Plate Detection Service", version="1.0.0")
 class ScanRequest(BaseModel):
     gate_id: str
     request_type: str = "capture_and_detect"
+    camera_url: Optional[str] = None
 
 class ScanResponse(BaseModel):
     detected_plate: str
@@ -93,38 +94,63 @@ class ScanResponse(BaseModel):
     timestamp: str
     gate_id: str
     model_version: str = "yolov8n-plate-v4.0"
+    image_path: Optional[str] = None
 
 @app.post("/api/scan-plate", response_model=ScanResponse)
 async def scan_plate(request: ScanRequest):
     """
-    Endpoint untuk mendeteksi plat dari RTSP stream kamera.
+    Endpoint untuk mendeteksi plat dari RTSP / HTTP / Webcam stream kamera.
     """
+    camera_url = request.camera_url or os.getenv("CAMERA_URL") or f"rtsp://camera_{request.gate_id}/stream"
+    
+    if isinstance(camera_url, str) and camera_url.isdigit():
+        video_source = int(camera_url)
+    else:
+        video_source = camera_url
+
     if USE_REAL_ML:
         try:
-            # Capture frame dari IP Camera (rtsp)
-            camera_url = f"rtsp://camera_{request.gate_id}/stream"
-            cap = cv2.VideoCapture(camera_url)
+            print(f"[ML Service] Membuka kamera dari: {video_source}")
+            cap = cv2.VideoCapture(video_source)
             ret, frame = cap.read()
             cap.release()
             
             if ret:
                 detected_plate, confidence = _process_ml_inference(frame)
+                
+                # Simpan frame ke folder uploads/scans agar bisa diakses backend
+                backend_uploads_dir = os.path.join(BASE_DIR, "backend", "uploads", "scans")
+                os.makedirs(backend_uploads_dir, exist_ok=True)
+                
+                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"capture_{request.gate_id}_{timestamp_str}.jpg"
+                filepath = os.path.join(backend_uploads_dir, filename)
+                relative_path = f"/uploads/scans/{filename}"
+                
+                cv2.imwrite(filepath, frame)
+                print(f"[ML Service] Foto berhasil disimpan ke {filepath}")
+                
                 return ScanResponse(
                     detected_plate=detected_plate,
                     confidence=confidence,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     gate_id=request.gate_id,
+                    image_path=relative_path,
                 )
+            else:
+                print(f"[ML Error] Gagal membaca frame dari sumber: {video_source}")
         except Exception as e:
-            print(f"[ML Error] Gagal membaca kamera RTSP: {e}")
+            print(f"[ML Error] Gagal mengakses kamera {video_source}: {e}")
             
     # Fallback ke simulator
     detection = random.choice(SIMULATED_PLATES)
+    print(f"[ML Simulator Fallback] Mengembalikan deteksi simulasi: {detection['plate']} (conf: {detection['confidence']:.2f})")
     return ScanResponse(
         detected_plate=detection["plate"],
         confidence=detection["confidence"],
         timestamp=datetime.now(timezone.utc).isoformat(),
         gate_id=request.gate_id,
+        image_path=None,
     )
 
 @app.post("/api/predict-image", response_model=ScanResponse)

@@ -42,7 +42,7 @@ Role:
 
 Catatan:
 
-- Endpoint `/api/gate/ml/plate-detect`, `/api/gate/dual-validate`, dan `/api/gate/scan` untuk IoT saat ini tidak memakai token.
+- Endpoint `/api/gate/ml/plate-detect`, `/api/gate/dual-validate`, `/api/gate/capture-validate`, `/api/gate/upload-validate`, dan `/api/gate/scan` untuk IoT saat ini tidak memakai token.
 - Endpoint WebSocket juga tidak memakai token di kode saat ini.
 - Token dihasilkan dari `/api/auth/login`.
 
@@ -107,8 +107,11 @@ Nilai yang umum dipakai:
 | GET | `/api/mahasiswa/riwayat-parkir` | Mahasiswa | Riwayat parkir |
 | POST | `/api/gate/ml/plate-detect` | Public saat ini | Terima hasil OCR plat dari ML service |
 | POST | `/api/gate/dual-validate` | Public saat ini | Validasi RFID dan plat dari IoT |
+| POST | `/api/gate/capture-validate` | Public saat ini | Validasi RFID dengan trigger scan ANPR |
+| POST | `/api/gate/upload-validate` | Public saat ini | Validasi RFID dengan upload foto dari IoT |
 | POST | `/api/gate/scan` | Public saat ini | Legacy scan RFID dan plat dari IoT |
-| POST | `/api/gate/emergency-action` | Petugas/Admin | Manual override gerbang |
+| POST | `/api/gate/emergency-action` | Petugas/Admin | Manual override gerbang & tamu darurat |
+| GET | `/api/gate/emergency-guests` | Petugas/Admin | List tamu darurat yang sedang di dalam |
 | GET | `/api/gate/stats/capacity` | Public saat ini | Kapasitas parkir |
 | WS | `/api/gate/monitor/live` | Public saat ini | Live monitor event gate |
 | WS | `/api/gate/petugas/notifications` | Public saat ini | Notifikasi request akses baru |
@@ -966,6 +969,75 @@ Alur validasi:
 6. Jika valid, backend membuat `ParkingLog` dengan `status_akses = otomatis`.
 7. Backend broadcast event ke WebSocket `/api/gate/monitor/live`.
 
+### POST `/api/gate/capture-validate`
+
+Endpoint untuk alat IoT/gateway controller jika plat nomor belum terdeteksi secara offline/lokal. Alat hanya mengirimkan UID RFID, lalu backend meminta ML/ANPR service mengambil frame kamera dan mendeteksi plat secara realtime sebelum melakukan validasi.
+
+Auth: tidak memakai token di kode saat ini.
+
+Body:
+
+```json
+{
+  "rfid_uid": "RFID_BUDI_123",
+  "gate_type": "masuk",
+  "gate_id": "GATE_MASUK_1",
+  "camera_url": null
+}
+```
+
+Field:
+
+| Field | Type | Required | Keterangan |
+|---|---|---|---|
+| `rfid_uid` | string | yes | UID RFID yang dibaca alat |
+| `gate_type` | string | yes | `masuk` atau `keluar` |
+| `gate_id` | string | no | ID gerbang fisik. Default `GATE_DEFAULT` |
+| `camera_url` | string | no | Override URL IP Camera. Jika null, ANPR service memakai default configuration |
+
+Curl:
+
+```bash
+curl -X POST "$BASE_URL/api/gate/capture-validate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rfid_uid": "RFID_BUDI_123",
+    "gate_type": "masuk",
+    "gate_id": "GATE_MASUK_1"
+  }'
+```
+
+Response: Sama dengan response `/api/gate/dual-validate`.
+
+### POST `/api/gate/upload-validate`
+
+Endpoint untuk mikrokontroler berkamera (seperti ESP32-CAM) untuk mengirimkan data UID RFID beserta foto plat nomor kendaraan secara bersamaan. Backend akan meneruskan foto tersebut ke ML/ANPR service, lalu memvalidasi hasilnya.
+
+Auth: tidak memakai token di kode saat ini.
+
+Format: `multipart/form-data`
+
+Body parameters:
+
+| Field | Type | Required | Keterangan |
+|---|---|---|---|
+| `rfid_uid` | string | yes | UID kartu RFID |
+| `gate_type` | string | yes | `masuk` atau `keluar` |
+| `gate_id` | string | no | ID gerbang fisik. Default `GATE_DEFAULT` |
+| `file` | file | yes | File gambar (JPEG/PNG) hasil jepretan kamera |
+
+Curl:
+
+```bash
+curl -X POST "$BASE_URL/api/gate/upload-validate" \
+  -F "rfid_uid=RFID_BUDI_123" \
+  -F "gate_type=masuk" \
+  -F "gate_id=GATE_MASUK_1" \
+  -F "file=@/path/to/photo.jpg"
+```
+
+Response: Sama dengan response `/api/gate/dual-validate`.
+
 ### POST `/api/gate/scan`
 
 Endpoint legacy untuk simulator IoT lama. Gunakan `/api/gate/dual-validate` untuk flow baru RFID + ML confidence.
@@ -1066,21 +1138,38 @@ Response:
 
 ### POST `/api/gate/emergency-action`
 
-Manual override buka gerbang oleh petugas.
+Manual override buka gerbang oleh petugas. Endpoint ini juga mengelola data tamu darurat (Emergency Guest) yang masuk atau keluar area kampus.
 
 Auth: role `petugas` atau `admin`.
 
 Query parameter:
 
-| Field | Nilai |
-|---|---|
-| `gate` | `masuk` atau `keluar` |
-| `reason` | alasan emergency |
+| Field | Tipe | Required | Keterangan |
+|---|---|---|---|
+| `gate` | string | yes | `masuk` atau `keluar` |
+| `reason` | string | yes | Alasan emergency override |
+| `nama` | string | no | Nama tamu (wajib diisi untuk `gate=masuk` atau saat keluar tanpa `guest_id`) |
+| `kendaraan` | string | no | Plat nomor/identitas kendaraan tamu (wajib diisi untuk `gate=masuk` atau saat keluar tanpa `guest_id`) |
+| `guest_id` | integer | no | ID Tamu Darurat (dipakai saat `gate=keluar` untuk mencatat waktu keluar tamu yang terdaftar) |
 
-Curl:
+Alur Tamu Darurat:
+- **Masuk**: Ketika `gate=masuk` dipanggil dengan mengisi `nama` dan `kendaraan`, backend mendaftarkan tamu ke tabel `emergency_guests` dengan status `di_dalam`.
+- **Keluar (Dengan List)**: Ketika `gate=keluar` dipanggil dengan `guest_id`, backend memperbarui status tamu tersebut menjadi `sudah_keluar` dan mencatat `waktu_keluar`.
+- **Keluar (Tanpa List/Biasa)**: Petugas tetap bisa melakukan manual override keluar dengan mengisi `nama` dan `kendaraan` secara manual.
+
+Pemicu Servo: Panggilan sukses ke endpoint ini akan otomatis memicu database Firebase Realtime untuk membuka gerbang fisik (servo).
+
+Curl Masuk:
 
 ```bash
-curl -X POST "$BASE_URL/api/gate/emergency-action?gate=masuk&reason=Darurat" \
+curl -X POST "$BASE_URL/api/gate/emergency-action?gate=masuk&reason=Mengirim%20Barang&nama=Budi%20Kurir&kendaraan=H%201234%20AB" \
+  -H "Authorization: Bearer $PETUGAS_TOKEN"
+```
+
+Curl Keluar (dengan ID Tamu):
+
+```bash
+curl -X POST "$BASE_URL/api/gate/emergency-action?gate=keluar&reason=Selesai%20Kirim&guest_id=1" \
   -H "Authorization: Bearer $PETUGAS_TOKEN"
 ```
 
@@ -1089,11 +1178,38 @@ Response:
 ```json
 {
   "status": "success",
-  "message": "Gate masuk dibuka manual"
+  "message": "Gate masuk dibuka manual untuk Budi Kurir"
 }
 ```
 
-Catatan: kode saat ini membuat `ParkingLog` emergency dengan `vehicle_id = 1`, jadi pastikan data kendaraan ID 1 ada agar tidak bermasalah pada database dengan foreign key ketat.
+Catatan: kode membuat `ParkingLog` emergency dengan `vehicle_id = 1` (dummy) dan `user_id` dari petugas yang bertugas. Pastikan data kendaraan ID 1 dan user ID petugas valid di database.
+
+### GET `/api/gate/emergency-guests`
+
+Mendapatkan daftar tamu darurat (Emergency Guests) yang saat ini masih berada di dalam area kampus (status `di_dalam`).
+
+Auth: role `petugas` atau `admin`.
+
+Curl:
+
+```bash
+curl "$BASE_URL/api/gate/emergency-guests" \
+  -H "Authorization: Bearer $PETUGAS_TOKEN"
+```
+
+Response:
+
+```json
+[
+  {
+    "id": 1,
+    "nama": "Budi Kurir",
+    "plat_nomor": "H 1234 AB",
+    "alasan": "Mengirim Barang",
+    "waktu_masuk": "2026-06-08T15:30:00.000Z"
+  }
+]
+```
 
 ## WebSocket
 
@@ -1364,6 +1480,7 @@ curl -s -X POST "$BASE_URL/api/gate/dual-validate" -H "Content-Type: application
 - Jangan expose MySQL ke publik.
 - Endpoint IoT `/api/gate/scan` sebaiknya ditambah API key atau signature sebelum dipakai di produksi.
 - Jika memakai domain, letakkan backend di belakang Nginx dan HTTPS.
+- **PENTING UNTUK UPLOAD FOTO (STNK/Scan)**: Atur `client_max_body_size 10M;` (atau lebih besar) pada konfigurasi Nginx (di blok `server` atau `location /uploads`) agar server tidak mengembalikan error `413 Payload Too Large` saat menerima upload berkas gambar beresolusi tinggi.
 - Untuk WebSocket di belakang Nginx, pastikan header `Upgrade` dan `Connection` dikonfigurasi.
 - Jika `/` dan `/docs` hidup tetapi `/api/auth/login` mengembalikan `503` atau sebelumnya `500`, berarti request sudah sampai backend tetapi koneksi/query database gagal. Jalankan `curl "$BASE_URL/health/db"` dan cek log service backend.
 
@@ -1394,3 +1511,50 @@ Jika `python debug_db.py` menampilkan:
 | `Unknown database` | Database belum dibuat | Buat `smart_parking_db` atau jalankan init DB |
 | `Table users belum ada` | Koneksi benar, tabel belum ada | Restart backend agar `create_all` jalan, lalu cek ulang |
 | `Seed users belum ada` | Tabel ada tapi akun dummy kosong | Jalankan `docker exec -it <nama_container_backend> python seed.py` |
+
+## Integrasi Servo Fisik (Firebase Realtime Database)
+
+Sistem ini mendukung integrasi dengan gerbang penghalang fisik yang dikendalikan oleh mikrokontroler (ESP32/ESP8266) dengan menggunakan **Firebase Realtime Database** sebagai perantara sinyal (trigger).
+
+### Alur Kerja Trigger Servo
+
+```mermaid
+sequenceDiagram
+    participant Petugas as Petugas (Dashboard)
+    participant Backend as Backend (FastAPI)
+    participant Firebase as Firebase RTDB
+    participant ESP32 as ESP32 (Gate Controller)
+
+    Petugas->>Backend: Klik 'Buka Pintu' / Setujui Akses Manual
+    Backend->>Backend: Catat log parkir di MySQL
+    Backend->>Firebase: PUT /gate/servo_trigger.json -> 1
+    Note over ESP32,Firebase: ESP32 terus memantau path /gate/servo_trigger
+    Firebase-->>ESP32: Kirim perubahan nilai (1)
+    ESP32->>ESP32: Putar servo (Gerbang Buka)
+    ESP32->>ESP32: Delay 5 detik (Kendaraan lewat)
+    ESP32->>ESP32: Putar servo balik (Gerbang Tutup)
+    ESP32->>Firebase: PUT /gate/servo_trigger.json -> 0
+```
+
+### Konfigurasi Firebase di Backend
+
+Backend memerlukan konfigurasi environment berikut di file `.env` (atau fallback di `core/config.py`):
+
+```env
+FIREBASE_DB_URL="https://nama-project-rtdb.firebaseio.com"
+FIREBASE_DB_SECRET="credential_secret_key"
+```
+
+- `FIREBASE_DB_URL`: Alamat database Firebase Realtime Database.
+- `FIREBASE_DB_SECRET`: Database secret atau token autentikasi (opsional jika database bersifat publik untuk read/write, namun direkomendasikan untuk keamanan).
+
+### Endpoint yang Memicu Servo Fisik
+
+1. **Persetujuan Permintaan Akses Manual**:
+   - `PUT /api/petugas/access-requests/{request_id}/respond?action=disetujui`
+   - Dipanggil oleh petugas untuk menyetujui antrean request dari mahasiswa.
+2. **Override Darurat**:
+   - `POST /api/gate/emergency-action`
+   - Dipanggil oleh petugas untuk membuka gerbang secara paksa (emergency).
+
+Kedua endpoint di atas secara internal memanggil helper `trigger_physical_servo()` yang mengirimkan HTTP PUT request ke Firebase pada path `/gate/servo_trigger.json` dengan body `1`.

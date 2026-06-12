@@ -40,7 +40,7 @@ def get_all_mahasiswa(db: Session = Depends(get_db)):
     return db.query(models.User).filter(models.User.role == models.RoleEnum.mahasiswa).all()
 
 @router.post("/mahasiswa", response_model=UserResponse)
-def create_mahasiswa(user: UserCreate, db: Session = Depends(get_db)):
+async def create_mahasiswa(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.nim_npp == user.nim_npp).first():
         raise HTTPException(status_code=400, detail="NIM already registered")
     if user.rfid_uid and db.query(models.User).filter(models.User.rfid_uid == user.rfid_uid).first():
@@ -58,10 +58,15 @@ def create_mahasiswa(user: UserCreate, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "mahasiswa_created"})
+    except Exception:
+        pass
     return db_user
 
 @router.put("/mahasiswa/{user_id}", response_model=UserResponse)
-def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+async def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id, models.User.role == models.RoleEnum.mahasiswa).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Mahasiswa not found")
@@ -81,15 +86,25 @@ def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = Depend
     
     db.commit()
     db.refresh(db_user)
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "mahasiswa_updated"})
+    except Exception:
+        pass
     return db_user
 
 @router.delete("/mahasiswa/{user_id}")
-def delete_mahasiswa(user_id: int, db: Session = Depends(get_db)):
+async def delete_mahasiswa(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id, models.User.role == models.RoleEnum.mahasiswa).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Mahasiswa not found")
     db.delete(db_user)
     db.commit()
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "mahasiswa_deleted"})
+    except Exception:
+        pass
     return {"status": "success", "message": "Mahasiswa deleted"}
 
 @router.get("/petugas", response_model=List[UserResponse])
@@ -97,7 +112,7 @@ def get_all_petugas(db: Session = Depends(get_db)):
     return db.query(models.User).filter(models.User.role == models.RoleEnum.petugas).all()
 
 @router.post("/petugas", response_model=UserResponse)
-def create_petugas(user: UserCreate, db: Session = Depends(get_db)):
+async def create_petugas(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.nim_npp == user.nim_npp).first():
         raise HTTPException(status_code=400, detail="NPP already registered")
         
@@ -110,10 +125,15 @@ def create_petugas(user: UserCreate, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "petugas_created"})
+    except Exception:
+        pass
     return db_user
 
 @router.put("/petugas/{user_id}", response_model=UserResponse)
-def update_petugas(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+async def update_petugas(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id, models.User.role == models.RoleEnum.petugas).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Petugas not found")
@@ -127,15 +147,25 @@ def update_petugas(user_id: int, user_update: UserUpdate, db: Session = Depends(
     
     db.commit()
     db.refresh(db_user)
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "petugas_updated"})
+    except Exception:
+        pass
     return db_user
 
 @router.delete("/petugas/{user_id}")
-def delete_petugas(user_id: int, db: Session = Depends(get_db)):
+async def delete_petugas(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id, models.User.role == models.RoleEnum.petugas).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Petugas not found")
     db.delete(db_user)
     db.commit()
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "petugas_deleted"})
+    except Exception:
+        pass
     return {"status": "success", "message": "Petugas deleted"}
 
 @router.get("/dashboard-stats")
@@ -187,20 +217,30 @@ def get_all_prodi(db: Session = Depends(get_db)):
     return db.query(models.Prodi).all()
 
 @router.post("/prodi", response_model=ProdiResponse)
-def create_prodi(prodi: ProdiCreate, db: Session = Depends(get_db)):
+async def create_prodi(prodi: ProdiCreate, db: Session = Depends(get_db)):
     db_prodi = models.Prodi(nama=prodi.nama)
     db.add(db_prodi)
     db.commit()
     db.refresh(db_prodi)
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "prodi_created"})
+    except Exception:
+        pass
     return db_prodi
 
 @router.delete("/prodi/{prodi_id}")
-def delete_prodi(prodi_id: int, db: Session = Depends(get_db)):
+async def delete_prodi(prodi_id: int, db: Session = Depends(get_db)):
     db_prodi = db.query(models.Prodi).filter(models.Prodi.id == prodi_id).first()
     if not db_prodi:
         raise HTTPException(status_code=404, detail="Prodi not found")
     db.delete(db_prodi)
     db.commit()
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "prodi_deleted"})
+    except Exception:
+        pass
     return {"status": "success"}
 
 @router.get("/reports")
@@ -303,7 +343,7 @@ async def send_broadcast(req: BroadcastRequest, db: Session = Depends(get_db), c
     return {"status": "success", "message": "Broadcast terkirim", "id": announcement.id}
 
 @router.put("/announcements/{ann_id}")
-def update_announcement(ann_id: int, req: BroadcastRequest, db: Session = Depends(get_db)):
+async def update_announcement(ann_id: int, req: BroadcastRequest, db: Session = Depends(get_db)):
     ann = db.query(models.Announcement).filter(models.Announcement.id == ann_id).first()
     if not ann:
         raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
@@ -311,14 +351,24 @@ def update_announcement(ann_id: int, req: BroadcastRequest, db: Session = Depend
     ann.message = req.message
     ann.expires_at = req.expires_at
     db.commit()
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "announcement_updated"})
+    except Exception:
+        pass
     return {"status": "success", "message": "Pengumuman diperbarui"}
 
 @router.delete("/announcements/{ann_id}")
-def delete_announcement(ann_id: int, db: Session = Depends(get_db)):
+async def delete_announcement(ann_id: int, db: Session = Depends(get_db)):
     ann = db.query(models.Announcement).filter(models.Announcement.id == ann_id).first()
     if not ann:
         raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
     
     db.delete(ann)
     db.commit()
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "announcement_deleted"})
+    except Exception:
+        pass
     return {"status": "success", "message": "Pengumuman dihapus"}

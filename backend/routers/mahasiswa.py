@@ -20,7 +20,7 @@ def get_my_vehicles(current_user: models.User = Depends(get_mahasiswa), db: Sess
     return db.query(models.Vehicle).filter(models.Vehicle.user_id == current_user.id).all()
 
 @router.post("/vehicles", response_model=VehicleResponse)
-def register_vehicle(vehicle: VehicleCreate, current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
+async def register_vehicle(vehicle: VehicleCreate, current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
     if db.query(models.Vehicle).filter(
         models.Vehicle.plat_nomor == vehicle.plat_nomor,
         models.Vehicle.user_id == current_user.id
@@ -35,6 +35,14 @@ def register_vehicle(vehicle: VehicleCreate, current_user: models.User = Depends
     db.add(db_vehicle)
     db.commit()
     db.refresh(db_vehicle)
+    
+    # ── Real-time WebSocket notification ──
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "vehicle_registered"})
+    except Exception:
+        pass
+        
     return db_vehicle
 
 @router.post("/vehicles/{vehicle_id}/upload-stnk")
@@ -73,6 +81,13 @@ async def upload_stnk(vehicle_id: int, file: UploadFile = File(...), current_use
     db.commit()
     db.refresh(vehicle)
     
+    # ── Real-time WebSocket notification ──
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "stnk_uploaded"})
+    except Exception:
+        pass
+        
     return {"status": "success", "message": "Foto STNK berhasil diupload", "path": vehicle.foto_stnk}
 
 @router.get("/status-parkir")
@@ -193,7 +208,7 @@ def get_parking_history(current_user: models.User = Depends(get_mahasiswa), db: 
     return result
 
 @router.delete("/vehicles/{vehicle_id}")
-def delete_vehicle(vehicle_id: int, current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
+async def delete_vehicle(vehicle_id: int, current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
     vehicle = db.query(models.Vehicle).filter(
         models.Vehicle.id == vehicle_id,
         models.Vehicle.user_id == current_user.id
@@ -219,4 +234,12 @@ def delete_vehicle(vehicle_id: int, current_user: models.User = Depends(get_maha
             
     db.delete(vehicle)
     db.commit()
+    
+    # ── Real-time WebSocket notification ──
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "vehicle_deleted"})
+    except Exception:
+        pass
+        
     return {"status": "success", "message": "Kendaraan berhasil dihapus"}

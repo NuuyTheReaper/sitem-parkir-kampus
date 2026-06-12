@@ -15,7 +15,7 @@ def get_pending_vehicles(db: Session = Depends(get_db)):
     return db.query(models.Vehicle).filter(models.Vehicle.status_validasi == models.ValidationStatusEnum.pending).all()
 
 @router.put("/vehicles/{vehicle_id}/verify", response_model=VehicleResponse)
-def verify_vehicle(vehicle_id: int, status: str, db: Session = Depends(get_db)):
+async def verify_vehicle(vehicle_id: int, status: str, db: Session = Depends(get_db)):
     if status not in [models.ValidationStatusEnum.disetujui, models.ValidationStatusEnum.ditolak]:
         raise HTTPException(status_code=400, detail="Invalid status input")
         
@@ -27,6 +27,11 @@ def verify_vehicle(vehicle_id: int, status: str, db: Session = Depends(get_db)):
     vehicle.status_validasi = status
     db.commit()
     db.refresh(vehicle)
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "vehicle_verified"})
+    except Exception:
+        pass
     return vehicle
 @router.get("/access-requests/pending")
 def get_pending_access_requests(db: Session = Depends(get_db)):
@@ -117,6 +122,12 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
     
     db.commit()
     
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "request_responded"})
+    except Exception:
+        pass
+        
     status_msg = "disetujui dan gate dibuka" if action == "disetujui" else "ditolak"
     return {"status": "success", "message": f"Permintaan telah {status_msg}"}
 
@@ -174,7 +185,7 @@ def get_session_stats(db: Session = Depends(get_db), current_user: models.User =
     }
 
 @router.put("/flag-user/{user_id}")
-def toggle_flag(user_id: int, is_flagged: bool, reason: str = "", db: Session = Depends(get_db)):
+async def toggle_flag(user_id: int, is_flagged: bool, reason: str = "", db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -182,6 +193,11 @@ def toggle_flag(user_id: int, is_flagged: bool, reason: str = "", db: Session = 
     user.is_flagged = 1 if is_flagged else 0
     user.flag_reason = reason if is_flagged else None
     db.commit()
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "user_flagged_toggled"})
+    except Exception:
+        pass
     return {"status": "success", "is_flagged": is_flagged}
 
 @router.get("/activity-chart")

@@ -728,7 +728,10 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
+                                  Wrap(
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 4,
                                     children: [
                                       Text(
                                         log['plate'] ?? 'UNKNOWN',
@@ -739,8 +742,7 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                                             color: Colors.white,
                                             letterSpacing: 2),
                                       ),
-                                      if (log['gate'] != null) ...[
-                                        const SizedBox(width: 8),
+                                      if (log['gate'] != null)
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 6, vertical: 2),
@@ -756,7 +758,6 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                                                 fontWeight: FontWeight.bold),
                                           ),
                                         ),
-                                      ],
                                     ],
                                   ),
                                   const SizedBox(height: 4),

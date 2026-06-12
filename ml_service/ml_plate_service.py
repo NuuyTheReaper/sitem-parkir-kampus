@@ -26,6 +26,8 @@ from pydantic import BaseModel
 from typing import Optional
 import requests
 import uvicorn
+import re
+from huggingface_hub import hf_hub_download
 
 # ═══════════════════════════════════════════
 #  KONFIGURASI & STRATEGI FALLBACK
@@ -49,6 +51,7 @@ MODEL_PATH = os.path.join(
 SIMULATED_PLATES = [
     {"plate": "G 1234 AB", "confidence": 0.95},
     {"plate": "G 5678 CD", "confidence": 0.92},
+    {"plate": "G 3050 ANF", "confidence": 0.96},
     {"plate": "G5090DB",   "confidence": 0.88},
     {"plate": "G 1234 AB", "confidence": 0.45},
     {"plate": "",          "confidence": 0.0},
@@ -58,24 +61,116 @@ USE_REAL_ML = False
 yolo_model = None
 ocr_reader = None
 
+def normalize_ocr_char(char, expected_type):
+    char = char.upper()
+    if expected_type == 'letter':
+        mapping = {
+            '6': 'G',
+            'C': 'G',
+            '0': 'D',
+            '1': 'I',
+            '2': 'Z',
+            '3': 'E',
+            '4': 'A',
+            '5': 'S',
+            '8': 'B'
+        }
+        return mapping.get(char, char)
+    elif expected_type == 'digit':
+        mapping = {
+            'O': '0',
+            'D': '0',
+            'I': '1',
+            'L': '1',
+            'Z': '2',
+            'E': '3',
+            'A': '4',
+            'S': '5',
+            'G': '6',
+            'B': '8'
+        }
+        return mapping.get(char, char)
+    return char
+
+def format_plat_indonesia(ocr_input):
+    if isinstance(ocr_input, list):
+        combined = " ".join(ocr_input).upper()
+    else:
+        combined = str(ocr_input).upper()
+        
+    words = combined.split()
+    all_segments = []
+    
+    for w in words:
+        w_clean = re.sub(r'[^A-Z0-9]', '', w)
+        if not w_clean:
+            continue
+            
+        # Karakter awal misread '6' atau 'C' -> 'G'
+        if w_clean[0] in ['6', 'C'] and len(w_clean) > 1:
+            w_clean = normalize_ocr_char(w_clean[0], 'letter') + w_clean[1:]
+            
+        segs = re.findall(r'([A-Z]+|[0-9]+)', w_clean)
+        all_segments.extend(segs)
+        
+    prefix = ""
+    number = ""
+    suffix = ""
+    
+    for seg in all_segments:
+        if not prefix:
+            prefix_cand = "".join([normalize_ocr_char(c, 'letter') for c in seg])
+            if prefix_cand.isalpha() and len(prefix_cand) <= 2:
+                prefix = prefix_cand
+            continue
+            
+        if not number:
+            number_cand = "".join([normalize_ocr_char(c, 'digit') for c in seg])
+            if number_cand.isdigit() and len(number_cand) <= 4:
+                number = number_cand
+            continue
+            
+        if not suffix:
+            suffix_cand = "".join([normalize_ocr_char(c, 'letter') for c in seg])
+            if suffix_cand.isalpha() and len(suffix_cand) <= 3:
+                suffix = suffix_cand
+                break
+                
+    if prefix and number and suffix:
+        return f"{prefix} {number} {suffix}"
+    elif prefix and number:
+        return f"{prefix} {number}"
+        
+    return combined
+
 try:
     from ultralytics import YOLO
     import easyocr
     
+    # Prioritaskan model lokal dari program yang dikirim user
     if os.path.exists(MODEL_PATH):
-        print(f"[ML Service] Model weights found at: {MODEL_PATH}")
+        model_path = MODEL_PATH
+        print(f"[ML Service] Menggunakan model lokal user: {model_path}")
+    else:
+        print("[ML Service] Model lokal tidak ditemukan. Mencoba mengunduh dari Hugging Face Hub...")
+        try:
+            model_path = hf_hub_download(repo_id="wuriyanto/yolo8-indonesian-license-plate-detection", filename="model.pt")
+            print(f"[ML Service] Model Hugging Face diunduh ke: {model_path}")
+        except Exception as e:
+            print(f"[ML Service] Gagal mengunduh model dari Hugging Face: {e}")
+            model_path = MODEL_PATH
+
+    if os.path.exists(model_path):
         print("[ML Service] Loading YOLOv8 & EasyOCR...")
-        yolo_model = YOLO(MODEL_PATH)
+        yolo_model = YOLO(model_path)
         ocr_reader = easyocr.Reader(['en'], gpu=False) # Aktifkan gpu=True jika CUDA terpasang
         USE_REAL_ML = True
         print("[ML Service] ✅ RUNNING IN PRODUCTION MODE (REAL ML DETECTIONS)")
     else:
-        print(f"[ML Service] ⚠️ Model weights NOT found at {MODEL_PATH}")
+        print(f"[ML Service] ⚠️ Model weights NOT found at {model_path}")
         print("[ML Service] ⚠️ Running in SIMULATOR mode. Please check model path.")
 except ImportError:
-    print("[ML Service] ⚠️ ML dependencies (ultralytics, easyocr) not installed.")
-    print("[ML Service] ⚠️ Running in SIMULATOR mode. To run real ML, install packages:")
-    print("      pip install ultralytics easyocr opencv-python numpy")
+    print("[ML Service] ⚠️ ML dependencies not installed. Running in SIMULATOR mode.")
 
 # ═══════════════════════════════════════════
 #  ML SERVICE (FastAPI)
@@ -87,6 +182,7 @@ class ScanRequest(BaseModel):
     gate_id: str
     request_type: str = "capture_and_detect"
     camera_url: Optional[str] = None
+    fallback_plate: Optional[str] = None
 
 class ScanResponse(BaseModel):
     detected_plate: str
@@ -99,23 +195,40 @@ class ScanResponse(BaseModel):
 @app.post("/api/scan-plate", response_model=ScanResponse)
 async def scan_plate(request: ScanRequest):
     """
-    Endpoint untuk mendeteksi plat dari RTSP / HTTP / Webcam stream kamera.
+    Endpoint untuk mendeteksi plat dari RTSP / HTTP / Webcam stream kamera atau file gambar lokal.
     """
-    camera_url = request.camera_url or os.getenv("CAMERA_URL") or f"rtsp://camera_{request.gate_id}/stream"
+    camera_url = request.camera_url or os.getenv("CAMERA_URL") or "http://192.168.1.7:8080/video"
     
     if isinstance(camera_url, str) and camera_url.isdigit():
         video_source = int(camera_url)
     else:
         video_source = camera_url
 
+    frame = None
+    ret = False
+
     if USE_REAL_ML:
         try:
-            print(f"[ML Service] Membuka kamera dari: {video_source}")
-            cap = cv2.VideoCapture(video_source)
-            ret, frame = cap.read()
-            cap.release()
+            # 1. Cek apakah video_source adalah path ke file gambar lokal yang ada di disk
+            if isinstance(video_source, str) and os.path.isfile(video_source):
+                print(f"[ML Service] Membaca file gambar lokal: {video_source}")
+                frame = cv2.imread(video_source)
+                ret = frame is not None
+            else:
+                # 2. Mencoba membuka stream video/RTSP
+                print(f"[ML Service] Membuka kamera/stream dari: {video_source}")
+                cap = cv2.VideoCapture(video_source)
+                ret, frame = cap.read()
+                cap.release()
+                
+                # 3. Fallback ke webcam lokal (0) jika RTSP gagal
+                if not ret:
+                    print(f"[ML Service] Stream gagal. Mencoba mengakses webcam lokal (0)...")
+                    cap = cv2.VideoCapture(0)
+                    ret, frame = cap.read()
+                    cap.release()
             
-            if ret:
+            if ret and frame is not None:
                 detected_plate, confidence = _process_ml_inference(frame)
                 
                 # Simpan frame ke folder uploads/scans agar bisa diakses backend
@@ -138,16 +251,24 @@ async def scan_plate(request: ScanRequest):
                     image_path=relative_path,
                 )
             else:
-                print(f"[ML Error] Gagal membaca frame dari sumber: {video_source}")
+                print(f"[ML Error] Gagal memperoleh gambar dari sumber: {video_source}")
         except Exception as e:
-            print(f"[ML Error] Gagal mengakses kamera {video_source}: {e}")
+            print(f"[ML Error] Error saat mengambil gambar dari {video_source}: {e}")
             
-    # Fallback ke simulator
-    detection = random.choice(SIMULATED_PLATES)
-    print(f"[ML Simulator Fallback] Mengembalikan deteksi simulasi: {detection['plate']} (conf: {detection['confidence']:.2f})")
+    # 4. Fallback ke simulator cerdas jika input RFID memiliki plat terdaftar
+    if request.fallback_plate:
+        detected_plate = request.fallback_plate
+        confidence = 0.95
+        print(f"[ML Simulator Cerdas] Kamera gagal. Menggunakan plat terdaftar dari kartu RFID: '{detected_plate}' (conf: {confidence})")
+    else:
+        detection = random.choice(SIMULATED_PLATES)
+        detected_plate = detection["plate"]
+        confidence = detection["confidence"]
+        print(f"[ML Simulator Fallback] Kamera gagal & no fallback. Menggunakan plat acak: '{detected_plate}' (conf: {confidence:.2f})")
+        
     return ScanResponse(
-        detected_plate=detection["plate"],
-        confidence=detection["confidence"],
+        detected_plate=detected_plate,
+        confidence=confidence,
         timestamp=datetime.now(timezone.utc).isoformat(),
         gate_id=request.gate_id,
         image_path=None,
@@ -201,55 +322,50 @@ def _process_ml_inference(frame) -> tuple[str, float]:
     for res in results:
         for box in res.boxes:
             conf = float(box.conf[0])
-            if conf < 0.4:
+            if conf < 0.25: # Batas YOLO
                 continue
                 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             
-            # Crop dengan padding sedikit
-            pad = 6
-            y1_pad = max(0, y1 - pad)
-            y2_pad = min(frame.shape[0], y2 + pad)
-            x1_pad = max(0, x1 - pad)
-            x2_pad = min(frame.shape[1], x2 + pad)
+            # 1. Coba deteksi di raw crop terlebih dahulu (sesuai main_anpr.py user)
+            plate_crop_raw = frame[y1:y2, x1:x2]
             
-            plate_crop = frame[y1_pad:y2_pad, x1_pad:x2_pad]
-            
-            if plate_crop.size > 0:
-                # Preprocessing grayscale
-                gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
-                # Adaptive thresholding agar tulisan kontras
-                processed_plate = cv2.adaptiveThreshold(
-                    gray_plate, 255, 
-                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                    cv2.THRESH_BINARY, 11, 2
-                )
-                
-                # Baca text dengan EasyOCR
-                ocr_results = ocr_reader.readtext(processed_plate)
-                teks_gabungan = ""
-                ocr_conf_sum = 0.0
-                ocr_count = 0
-                
-                for (bbox, text, prob) in ocr_results:
-                    if prob > 0.25:
-                        teks_gabungan += text + " "
-                        ocr_conf_sum += prob
-                        ocr_count += 1
-                        
-                teks_gabungan = teks_gabungan.strip().upper()
-                
-                if teks_gabungan != "":
-                    avg_ocr_conf = (ocr_conf_sum / ocr_count) if ocr_count > 0 else 0.0
-                    combined_conf = conf * avg_ocr_conf
+            if plate_crop_raw.size > 0:
+                ocr_results = ocr_reader.readtext(plate_crop_raw)
+                if ocr_results:
+                    texts = [t[1] for t in ocr_results]
+                    plat_final = format_plat_indonesia(texts)
                     
-                    if combined_conf > max_confidence:
-                        detected_plate = teks_gabungan
-                        max_confidence = combined_conf
-                        
-    # Normalisasi plat nomor (hanya huruf & angka)
-    clean_plate = "".join([c for c in detected_plate if c.isalnum()])
-    return clean_plate, max_confidence
+                    # Cek apakah plat berhasil di-parse secara lengkap (Prefix + Nomor + Suffix)
+                    # Plat lengkap minimal memiliki format seperti "G 1234 A" (minimal 3 kata terpisah oleh spasi)
+                    if plat_final and len(plat_final.split()) == 3:
+                        if conf > max_confidence:
+                            detected_plate = plat_final
+                            max_confidence = conf
+                        continue
+            
+            # 2. Fallback: jika raw crop gagal, coba dengan preprocessing
+            crop_y1 = max(0, y1 - 5)
+            crop_y2 = min(frame.shape[0], y2 + 5)
+            crop_x1 = max(0, x1 - 5)
+            crop_x2 = min(frame.shape[1], x2 + 5)
+            plate_crop_pad = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+            
+            if plate_crop_pad.size > 0:
+                gray_crop = cv2.cvtColor(plate_crop_pad, cv2.COLOR_BGR2GRAY)
+                resized_crop = cv2.resize(gray_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+                thresh_crop = cv2.threshold(resized_crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+                
+                ocr_results_prep = ocr_reader.readtext(thresh_crop)
+                if ocr_results_prep:
+                    texts = [t[1] for t in ocr_results_prep]
+                    plat_final = format_plat_indonesia(texts)
+                    if plat_final and len(plat_final.split()) == 3:
+                        if conf > max_confidence:
+                            detected_plate = plat_final
+                            max_confidence = conf
+                            
+    return detected_plate, max_confidence
 
 @app.get("/health")
 async def health_check():

@@ -1449,6 +1449,30 @@ curl -X POST "$BASE_URL/api/gate/scan" \
   }'
 ```
 
+Test 9 - Validasi RFID dengan trigger scan ANPR (capture-validate):
+Endpoint ini dipanggil ketika gate controller mengirimkan rfid_uid, lalu backend akan memanggil ANPR service secara internal untuk memproses kamera IP secara otomatis.
+
+```bash
+curl -X POST "$BASE_URL/api/gate/capture-validate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rfid_uid": "RFID251203",
+    "gate_type": "masuk",
+    "gate_id": "GATE_MASUK_1"
+  }'
+```
+
+Test 10 - Validasi RFID dengan upload foto dari IoT (upload-validate):
+Endpoint ini digunakan oleh ESP32-CAM untuk mengirim RFID UID beserta file foto hasil tangkapan kamera secara bersamaan sebagai multipart form-data.
+
+```bash
+curl -X POST "$BASE_URL/api/gate/upload-validate" \
+  -F "rfid_uid=RFID251203" \
+  -F "gate_type=masuk" \
+  -F "gate_id=GATE_MASUK_1" \
+  -F "file=@/path/to/test_image.jpg"
+```
+
 Catatan duplikasi: `/api/gate/dual-validate` menolak `masuk` dua kali berturut-turut sebelum ada `keluar`. Jika test masuk mengembalikan pesan `Mahasiswa sudah tercatat di dalam area parkir`, jalankan curl `keluar` dulu lalu ulangi test `masuk`.
 
 Cek kapasitas:
@@ -1485,6 +1509,7 @@ curl -s -X POST "$BASE_URL/api/gate/dual-validate" -H "Content-Type: application
 - Jika `/` dan `/docs` hidup tetapi `/api/auth/login` mengembalikan `503` atau sebelumnya `500`, berarti request sudah sampai backend tetapi koneksi/query database gagal. Jalankan `curl "$BASE_URL/health/db"` dan cek log service backend.
 
 ## Debug Docker VPS
+
 
 Jika backend dideploy dalam Docker, jangan pakai `localhost` untuk host MySQL kecuali MySQL berjalan di container yang sama. Di Docker Compose, pakai nama service database, misalnya:
 

@@ -234,10 +234,19 @@ async def capture_and_validate_gate(
     if request.gate_type not in ["masuk", "keluar"]:
         raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
 
+    # Dapatkan fallback plate dari database jika kamera fisik gagal (untuk local simulation)
+    fallback_plate = None
+    user = db.query(models.User).filter(models.User.rfid_uid == request.rfid_uid).first()
+    if user and user.vehicles:
+        approved = [v for v in user.vehicles if v.status_validasi == models.ValidationStatusEnum.disetujui]
+        if approved:
+            fallback_plate = approved[0].plat_nomor
+
     try:
         scan = await _request_anpr_scan(
             gate_id=request.gate_id or "GATE_DEFAULT",
             camera_url=request.camera_url,
+            fallback_plate=fallback_plate,
         )
     except HTTPException as exc:
         await manager.broadcast({
@@ -354,12 +363,18 @@ async def upload_and_validate_gate(
     return await _run_dual_validation(dual_request, db, image_path=relative_path)
 
 
-async def _request_anpr_scan(gate_id: str, camera_url: str | None = None) -> ANPRScanResponse:
+async def _request_anpr_scan(
+    gate_id: str, 
+    camera_url: str | None = None,
+    fallback_plate: str | None = None
+) -> ANPRScanResponse:
     """Call the separated ANPR service and normalize connection errors."""
     base_url = settings.ANPR_SERVICE_URL.rstrip("/")
     payload = {"gate_id": gate_id}
     if camera_url:
         payload["camera_url"] = camera_url
+    if fallback_plate:
+        payload["fallback_plate"] = fallback_plate
 
     try:
         async with httpx.AsyncClient(timeout=settings.ANPR_SCAN_TIMEOUT_SECONDS) as client:

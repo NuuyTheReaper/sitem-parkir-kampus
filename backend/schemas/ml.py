@@ -80,6 +80,7 @@ class ANPRScanRequest(BaseModel):
     """
     gate_id: str = Field(..., description="ID gerbang fisik")
     camera_url: Optional[str] = Field(None, description="Override URL kamera untuk gate ini")
+    fallback_plate: Optional[str] = Field(None, description="Plat nomor fallback jika kamera gagal (simulasi)")
 
 
 class ANPRScanResponse(BaseModel):

@@ -67,3 +67,8 @@ build/
 
 # Large zip backup
 repo.zip
+
+# Debug and temporary images
+debug_crop_*.jpg
+*.jpg
+

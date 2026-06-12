@@ -680,84 +680,174 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                   child: Column(
                     children: logs.map((log) {
                       final isSuccess = log['type'] == 'success';
+                      final imagePath = log['image_path'];
+                      
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
+                        margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(14),
+                          color: const Color(0xFF1E293B).withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                              color: (isSuccess
-                                      ? AppTheme.emerald
-                                      : const Color(0xFFEF4444))
-                                  .withOpacity(0.2)),
+                            color: isSuccess
+                                ? AppTheme.emerald.withOpacity(0.3)
+                                : const Color(0xFFEF4444).withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
                         child: Row(
                           children: [
                             Container(
-                              width: 36,
-                              height: 36,
+                              width: 38,
+                              height: 38,
                               decoration: BoxDecoration(
                                 color: (isSuccess
                                         ? AppTheme.emerald
                                         : const Color(0xFFEF4444))
                                     .withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
                                   isSuccess
-                                      ? Icons.check_rounded
-                                      : Icons.close_rounded,
+                                      ? Icons.check_circle_rounded
+                                      : Icons.cancel_rounded,
                                   color: isSuccess
                                       ? AppTheme.emerald
                                       : const Color(0xFFEF4444),
-                                  size: 20),
+                                  size: 22),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    log['plate'] ?? 'UNKNOWN',
-                                    style: const TextStyle(
-                                        fontFamily: 'Courier',
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                        letterSpacing: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        log['plate'] ?? 'UNKNOWN',
+                                        style: const TextStyle(
+                                            fontFamily: 'Courier',
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 18,
+                                            color: Colors.white,
+                                            letterSpacing: 2),
+                                      ),
+                                      if (log['gate'] != null) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white10,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            log['gate'].toString().toUpperCase(),
+                                            style: const TextStyle(
+                                                fontSize: 9,
+                                                color: Colors.white60,
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                  const SizedBox(height: 2),
+                                  const SizedBox(height: 4),
                                   Text(
                                     '${log['message'] ?? '-'} • ${log['user'] ?? '-'}',
                                     style: const TextStyle(
-                                        fontSize: 11, color: Color(0xFF64748B)),
-                                    overflow: TextOverflow.ellipsis,
+                                        fontSize: 12, color: Color(0xFF94A3B8)),
                                   ),
                                 ],
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: (isSuccess
-                                        ? AppTheme.emerald
-                                        : const Color(0xFFEF4444))
-                                    .withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(6),
+                            if (imagePath != null && imagePath.toString().isNotEmpty) ...[
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => Dialog(
+                                      backgroundColor: Colors.transparent,
+                                      insetPadding: const EdgeInsets.all(20),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            InteractiveViewer(
+                                              child: Image.network(
+                                                "${AppConstants.uploadBaseUrl}$imagePath",
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (context, error, stackTrace) => Container(
+                                                  height: 200,
+                                                  color: const Color(0xFF0F172A),
+                                                  child: const Center(
+                                                    child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              width: double.infinity,
+                                              color: const Color(0xFF0F172A),
+                                              padding: const EdgeInsets.all(16),
+                                              child: Column(
+                                                children: [
+                                                  Text(
+                                                    log['plate'] ?? 'UNKNOWN',
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Courier',
+                                                      color: Colors.white,
+                                                      fontSize: 20,
+                                                      fontWeight: FontWeight.bold,
+                                                      letterSpacing: 2,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    log['user'] ?? '',
+                                                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.white24),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(9),
+                                    child: Image.network(
+                                      "${AppConstants.uploadBaseUrl}$imagePath",
+                                      width: 70,
+                                      height: 46,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Container(
+                                        width: 70,
+                                        height: 46,
+                                        color: Colors.white.withOpacity(0.05),
+                                        child: const Icon(Icons.image_not_supported, size: 16, color: Colors.white24),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                              child: Text(
-                                isSuccess ? 'OK' : 'DENY',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: isSuccess
-                                        ? AppTheme.emerald
-                                        : const Color(0xFFEF4444),
-                                    letterSpacing: 1),
-                              ),
-                            ),
+                            ],
                           ],
                         ),
                       );

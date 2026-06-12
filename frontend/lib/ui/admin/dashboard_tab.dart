@@ -191,6 +191,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(refreshTriggerProvider);
     return RefreshIndicator(
       color: AppTheme.maroon,
       onRefresh: () async => setState(() {}),

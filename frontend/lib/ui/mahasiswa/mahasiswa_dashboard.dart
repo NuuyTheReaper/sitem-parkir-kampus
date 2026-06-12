@@ -63,6 +63,9 @@ class _MahasiswaDashboardState extends ConsumerState<MahasiswaDashboard> {
           _showAnnouncementSnackbar(decoded['message'], decoded['sender']);
           _loadAnnouncements(); // Refresh announcements
         }
+        if (mounted) {
+          ref.read(refreshTriggerProvider.notifier).state++;
+        }
       },
           onError: (_) =>
               Future.delayed(const Duration(seconds: 5), _connectWS));
@@ -381,6 +384,7 @@ class _StatusTabState extends ConsumerState<StatusTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(refreshTriggerProvider);
     return RefreshIndicator(
       color: AppTheme.maroon,
       onRefresh: () async => setState(() {}),
@@ -1098,6 +1102,7 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(refreshTriggerProvider);
     return Scaffold(
       backgroundColor: Colors.white,
       body: FutureBuilder<List<dynamic>>(
@@ -1364,6 +1369,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(refreshTriggerProvider);
     return Scaffold(
       backgroundColor: Colors.white,
       body: FutureBuilder<List<dynamic>>(

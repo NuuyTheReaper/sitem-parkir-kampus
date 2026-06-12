@@ -15,9 +15,6 @@ import '../shared/app_header.dart';
 import '../shared/app_navbar.dart';
 import '../shared/filter_toggle.dart';
 
-// Provider to force global refresh
-final refreshTriggerProvider = StateProvider<int>((ref) => 0);
-
 // Provider to track pending request count for badge
 final pendingCountProvider = StateProvider<int>((ref) => 0);
 

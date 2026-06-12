@@ -297,6 +297,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(refreshTriggerProvider);
     return Column(
       children: [
         _buildFilterBar(),

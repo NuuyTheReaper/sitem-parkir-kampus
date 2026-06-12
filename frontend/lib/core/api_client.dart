@@ -23,3 +23,5 @@ final dioProvider = Provider<Dio>((ref) {
 
   return dio;
 });
+
+final refreshTriggerProvider = StateProvider<int>((ref) => 0);

@@ -100,6 +100,7 @@ Nilai yang umum dipakai:
 | GET | `/api/mahasiswa/vehicles` | Mahasiswa | List kendaraan sendiri |
 | POST | `/api/mahasiswa/vehicles` | Mahasiswa | Daftar kendaraan |
 | POST | `/api/mahasiswa/vehicles/{vehicle_id}/upload-stnk` | Mahasiswa | Upload foto STNK |
+| DELETE | `/api/mahasiswa/vehicles/{vehicle_id}` | Mahasiswa | Hapus kendaraan |
 | GET | `/api/mahasiswa/status-parkir` | Mahasiswa | Status parkir saat ini |
 | POST | `/api/mahasiswa/access-request` | Mahasiswa | Request akses manual |
 | GET | `/api/mahasiswa/my-requests` | Mahasiswa | Riwayat request akses |
@@ -756,6 +757,28 @@ Response:
   "status": "success",
   "message": "Foto STNK berhasil diupload",
   "path": "/uploads/stnk/stnk_1_xxxxxxxx.jpg"
+}
+```
+
+### DELETE `/api/mahasiswa/vehicles/{vehicle_id}`
+
+Menghapus kendaraan milik mahasiswa. Seluruh data log parkir (`ParkingLog`) dan permintaan akses (`AccessRequest`) terkait kendaraan tersebut juga akan dibersihkan dari database, serta berkas foto STNK fisik akan dihapus dari server.
+
+Auth: mahasiswa pemilik kendaraan.
+
+Curl:
+
+```bash
+curl -X DELETE "$BASE_URL/api/mahasiswa/vehicles/1" \
+  -H "Authorization: Bearer $MHS_TOKEN"
+```
+
+Response:
+
+```json
+{
+  "status": "success",
+  "message": "Kendaraan berhasil dihapus"
 }
 ```
 

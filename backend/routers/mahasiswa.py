@@ -191,3 +191,32 @@ def get_parking_history(current_user: models.User = Depends(get_mahasiswa), db: 
             "plat_nomor": vehicle.plat_nomor if vehicle else "Unknown",
         })
     return result
+
+@router.delete("/vehicles/{vehicle_id}")
+def delete_vehicle(vehicle_id: int, current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
+    vehicle = db.query(models.Vehicle).filter(
+        models.Vehicle.id == vehicle_id,
+        models.Vehicle.user_id == current_user.id
+    ).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Kendaraan tidak ditemukan")
+    
+    # Hapus log parkir terkait kendaraan tersebut
+    db.query(models.ParkingLog).filter(models.ParkingLog.vehicle_id == vehicle_id).delete()
+    
+    # Hapus request akses terkait kendaraan tersebut
+    db.query(models.AccessRequest).filter(models.AccessRequest.vehicle_id == vehicle_id).delete()
+    
+    # Hapus file foto STNK jika ada
+    if vehicle.foto_stnk:
+        try:
+            filename = os.path.basename(vehicle.foto_stnk)
+            filepath = os.path.join(UPLOAD_DIR, filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass  # Jangan gagalkan penghapusan data DB jika gagal menghapus file fisik
+            
+    db.delete(vehicle)
+    db.commit()
+    return {"status": "success", "message": "Kendaraan berhasil dihapus"}

@@ -765,6 +765,142 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
     }
   }
 
+  Future<void> _confirmDeleteVehicle(int vehicleId, String platNomor) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.warning_amber_rounded,
+                        color: Colors.red, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  const Text('Hapus Kendaraan',
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.slate900)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Apakah Anda yakin ingin menghapus kendaraan dengan plat nomor $platNomor?',
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: AppTheme.slate700,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.1)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 20, color: Colors.red),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Tindakan ini juga akan menghapus riwayat parkir & request akses kendaraan ini.',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: Text('Batal',
+                          style: TextStyle(
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.red,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Hapus',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ref.read(dioProvider).delete('mahasiswa/vehicles/$vehicleId');
+        if (!mounted) return;
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text('Kendaraan berhasil dihapus!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      } catch (err) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menghapus kendaraan: $err'),
+            backgroundColor: AppTheme.maroon,
+          ),
+        );
+      }
+    }
+  }
+
   void _showAddVehicleDialog() {
     String selectedType = 'Motor';
     final platController = TextEditingController();
@@ -1079,6 +1215,18 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
                                     fontSize: 13, color: AppTheme.slate500),
                               ),
                             ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.redAccent,
+                            size: 24,
+                          ),
+                          tooltip: 'Hapus Kendaraan',
+                          onPressed: () => _confirmDeleteVehicle(
+                            vehicle['id'],
+                            vehicle['plat_nomor'],
                           ),
                         ),
                       ],

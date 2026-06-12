@@ -699,6 +699,9 @@ curl "$BASE_URL/api/mahasiswa/vehicles" \
 
 Mendaftarkan kendaraan baru. Status awal selalu `pending`.
 
+> [!NOTE]
+> Sistem mendukung **pendaftaran plat nomor kendaraan yang sama oleh user yang berbeda** (untuk memfasilitasi penggunaan kendaraan bersama/keluarga). Namun, satu user tidak diperbolehkan mendaftarkan plat nomor yang sama lebih dari satu kali. Pengecekan duplikasi hanya dibatasi per-user akun masing-masing.
+
 Body:
 
 ```json

@@ -83,7 +83,7 @@ class Vehicle(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     jenis_kendaraan = Column(SQLEnum(VehicleTypeEnum), nullable=False)
-    plat_nomor = Column(String(20), unique=True, index=True, nullable=False)
+    plat_nomor = Column(String(20), index=True, nullable=False)
     merek = Column(String(50), nullable=True)
     foto_stnk = Column(String(255), nullable=True) # URL or path to STNK
     status_validasi = Column(SQLEnum(ValidationStatusEnum), default=ValidationStatusEnum.pending)

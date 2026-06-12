@@ -21,8 +21,11 @@ def get_my_vehicles(current_user: models.User = Depends(get_mahasiswa), db: Sess
 
 @router.post("/vehicles", response_model=VehicleResponse)
 def register_vehicle(vehicle: VehicleCreate, current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
-    if db.query(models.Vehicle).filter(models.Vehicle.plat_nomor == vehicle.plat_nomor).first():
-        raise HTTPException(status_code=400, detail="Plat nomor already registered")
+    if db.query(models.Vehicle).filter(
+        models.Vehicle.plat_nomor == vehicle.plat_nomor,
+        models.Vehicle.user_id == current_user.id
+    ).first():
+        raise HTTPException(status_code=400, detail="Anda sudah mendaftarkan plat nomor ini")
         
     db_vehicle = models.Vehicle(
         **vehicle.dict(),

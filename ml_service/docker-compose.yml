@@ -11,7 +11,7 @@ services:
       - "8765:8765"
     environment:
       - BACKEND_URL=https://parkirkampus.my.id/api/gate/ml/plate-detect
-      - CAMERA_URL=http://192.168.1.7:8080/video
+      - CAMERA_URL=${CAMERA_URL:-0}
     volumes:
       - easyocr-cache:/root/.EasyOCR
       - huggingface-cache:/root/.cache/huggingface

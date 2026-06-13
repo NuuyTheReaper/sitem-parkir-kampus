@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # ANPR service runs in a separate container/process.
     # Backend calls this service only when a gate request needs camera OCR.
-    ANPR_SERVICE_URL: str = "http://127.0.0.1:5000"
+    ANPR_SERVICE_URL: str = "http://127.0.0.1:8765"
     ANPR_SCAN_TIMEOUT_SECONDS: float = 15.0
 
     # Firebase Realtime Database Settings for physical servo integration

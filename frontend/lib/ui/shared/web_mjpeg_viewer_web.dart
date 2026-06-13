@@ -17,7 +17,21 @@ class _WebMjpegViewerState extends State<WebMjpegViewer> {
   @override
   void initState() {
     super.initState();
-    viewId = 'mjpeg-view-${DateTime.now().millisecondsSinceEpoch}';
+    _registerView();
+  }
+
+  @override
+  void didUpdateWidget(covariant WebMjpegViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.streamUrl != widget.streamUrl) {
+      setState(() {
+        _registerView();
+      });
+    }
+  }
+
+  void _registerView() {
+    viewId = 'mjpeg-view-${widget.streamUrl.hashCode}-${DateTime.now().millisecondsSinceEpoch}';
 
     final htmlContent = '''
       <html>

@@ -1,7 +1,11 @@
 import 'package:iconly/iconly.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/app_theme.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -11,6 +15,7 @@ import '../shared/profile_tab.dart';
 import '../shared/parking_chart.dart';
 import '../shared/modern_components.dart';
 import '../shared/web_mjpeg_viewer.dart';
+import '../shared/web_camera_viewer.dart';
 import '../shared/app_header.dart';
 import '../shared/app_navbar.dart';
 import '../shared/filter_toggle.dart';
@@ -47,6 +52,12 @@ class _PetugasDashboardState extends ConsumerState<PetugasDashboard> {
     try {
       _notifChannel =
           WebSocketChannel.connect(Uri.parse(AppConstants.wsNotifUrl));
+      
+      // Catch ready future errors to prevent uncaught zone exception
+      _notifChannel!.ready.catchError((err) {
+        debugPrint('WS Notif Connection Error: $err');
+      });
+
       _notifChannel!.stream.listen((message) {
         try {
           final decoded = jsonDecode(message);
@@ -371,12 +382,21 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
   String? _cameraUrl;
   bool _showCamera = false;
   bool _isEmergencyExpanded = false;
+  String _cameraType = 'ip_camera';
+  final _cameraController = WebCameraController();
 
   @override
   void initState() {
     super.initState();
+    _loadCameraSettings();
     try {
       channel = WebSocketChannel.connect(Uri.parse(AppConstants.wsUrl));
+      
+      // Catch ready future errors to prevent uncaught zone exception
+      channel!.ready.catchError((err) {
+        debugPrint('WS Live Monitor Connection Error: $err');
+      });
+
       channel!.stream.listen((message) {
         try {
           final decoded = jsonDecode(message);
@@ -397,6 +417,38 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
     } catch (_) {}
   }
 
+  Future<void> _loadCameraSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        String savedType = prefs.getString('petugas_camera_type') ?? 'ip_camera';
+        if (savedType != 'ip_camera' && savedType != 'device_camera') {
+          savedType = 'ip_camera';
+        }
+        _cameraType = savedType;
+        _cameraUrl = prefs.getString('petugas_camera_url');
+        _showCamera = prefs.getBool('petugas_show_camera') ?? false;
+      });
+    } catch (e) {
+      debugPrint('Error loading camera settings: $e');
+    }
+  }
+
+  Future<void> _saveCameraSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('petugas_camera_type', _cameraType);
+      if (_cameraUrl != null) {
+        await prefs.setString('petugas_camera_url', _cameraUrl!);
+      } else {
+        await prefs.remove('petugas_camera_url');
+      }
+      await prefs.setBool('petugas_show_camera', _showCamera);
+    } catch (e) {
+      debugPrint('Error saving camera settings: $e');
+    }
+  }
+
   @override
   void dispose() {
     channel?.sink.close();
@@ -404,84 +456,513 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
   }
 
   void _showCameraDialog() {
-    final urlCtrl = TextEditingController(text: _cameraUrl ?? '');
+    String localCameraType = _cameraType;
+    if (localCameraType != 'ip_camera' && localCameraType != 'device_camera') {
+      localCameraType = 'ip_camera';
+    }
+
+    final urlCtrl = TextEditingController(
+      text: (localCameraType == 'ip_camera') ? (_cameraUrl ?? '') : '',
+    );
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(IconlyLight.camera, color: AppTheme.maroon),
-            SizedBox(width: 8),
-            Text('Koneksi Kamera'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: urlCtrl,
-              decoration: const InputDecoration(
-                labelText: 'URL Stream Kamera',
-                hintText: 'http://192.168.x.x:81/stream',
-                prefixIcon: Icon(Icons.link_rounded),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: const [
+              Icon(IconlyLight.camera, color: AppTheme.maroon),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Koneksi Kamera'),
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, size: 14, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Masukkan URL MJPEG stream dari ESP32-CAM atau IP Camera Anda.',
-                      style: TextStyle(fontSize: 11, color: Colors.blue),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tipe Kamera',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: AppTheme.slate700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: localCameraType,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'ip_camera',
+                      child: Text('IP Camera (MJPEG Stream)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'device_camera',
+                      child: Text('Camera Device (Webcam)'),
+                    ),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setStateDialog(() {
+                        localCameraType = val;
+                      });
+                    }
+                  },
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(IconlyLight.setting, size: 20),
+                    filled: true,
+                    fillColor: AppTheme.slate50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.slate200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.slate200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppTheme.maroon, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (localCameraType == 'ip_camera') ...[
+                  TextField(
+                    controller: urlCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'URL Stream Kamera',
+                      hintText: 'http://192.168.x.x:81/stream',
+                      prefixIcon: const Icon(Icons.link_rounded, size: 20),
+                      filled: true,
+                      fillColor: AppTheme.slate50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.slate200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.slate200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.maroon, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: Colors.blue),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Masukkan URL MJPEG stream dari ESP32-CAM atau IP Camera Anda.',
+                            style: TextStyle(fontSize: 11, color: Colors.blue),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (localCameraType == 'device_camera') ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.emerald.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.emerald.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline_rounded, size: 18, color: AppTheme.emerald),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Akan menggunakan webcam lokal pada perangkat Anda. Izinkan akses kamera saat diminta.',
+                            style: TextStyle(fontSize: 11, color: AppTheme.emerald, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.slate500),
+              child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            if (_cameraUrl != null || _showCamera)
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _cameraUrl = null;
+                    _showCamera = false;
+                  });
+                  _saveCameraSettings();
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Putuskan', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
               ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.maroon,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                setState(() {
+                  _cameraType = localCameraType;
+                  if (_cameraType == 'ip_camera') {
+                    _cameraUrl = urlCtrl.text.isNotEmpty ? urlCtrl.text : null;
+                    _showCamera = _cameraUrl != null;
+                  } else {
+                    _cameraUrl = 'device_camera';
+                    _showCamera = true;
+                  }
+                });
+                _saveCameraSettings();
+                Navigator.pop(ctx);
+              },
+              icon: const Icon(Icons.link_rounded, color: Colors.white, size: 18),
+              label: const Text('Hubungkan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          if (_cameraUrl != null)
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _cameraUrl = null;
-                  _showCamera = false;
-                });
-                Navigator.pop(ctx);
-              },
-              child:
-                  const Text('Putuskan', style: TextStyle(color: Colors.red)),
-            ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.maroon),
-            onPressed: () {
-              if (urlCtrl.text.isNotEmpty) {
-                setState(() {
-                  _cameraUrl = urlCtrl.text;
-                  _showCamera = true;
-                });
-              }
-              Navigator.pop(ctx);
-            },
-            icon: const Icon(IconlyLight.camera, size: 16, color: Colors.white),
-            label:
-                const Text('Hubungkan', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
+  }
+
+  Future<void> _captureAndScanDeviceCamera() async {
+    final rfidCtrl = TextEditingController(text: 'RFID_BUDI_123');
+    VoidCallback? dialogListener;
+    rfidCtrl.addListener(() {
+      if (dialogListener != null) {
+        dialogListener!();
+      }
+    });
+
+    try {
+      final bytes = await _cameraController.capture();
+      if (bytes == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gagal mengambil gambar dari webcam. Pastikan kamera aktif dan berikan izin.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Show dialog to choose RFID card & Gate Type
+      String gateType = 'masuk';
+      String gateId = 'GATE_MASUK_1';
+
+      if (!mounted) return;
+
+      bool confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setStateDialog) {
+            dialogListener = () {
+              if (mounted) setStateDialog(() {});
+            };
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: const [
+                  Icon(IconlyLight.scan, color: AppTheme.maroon),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Scan Plat via Webcam'),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          Uint8List.fromList(bytes),
+                          height: 120,
+                          width: 180,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Pilih RFID (Simulasi Kartu):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: (rfidCtrl.text == 'RFID_BUDI_123' || rfidCtrl.text == 'RFID_SITI_456') ? rfidCtrl.text : 'custom',
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(value: 'RFID_BUDI_123', child: Text('Budi Santoso (RFID_BUDI_123)')),
+                        DropdownMenuItem(value: 'RFID_SITI_456', child: Text('Siti Aminah (RFID_SITI_456)')),
+                        DropdownMenuItem(value: 'custom', child: Text('Manual / Custom UID')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setStateDialog(() {
+                            if (val != 'custom') {
+                              rfidCtrl.text = val;
+                            } else {
+                              rfidCtrl.text = '';
+                            }
+                          });
+                        }
+                      },
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.nfc_rounded, size: 20),
+                        filled: true,
+                        fillColor: AppTheme.slate50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.slate200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.slate200),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.maroon, width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: rfidCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'UID RFID',
+                        hintText: 'Masukkan UID RFID',
+                        prefixIcon: const Icon(Icons.credit_card_rounded, size: 20),
+                        filled: true,
+                        fillColor: AppTheme.slate50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.slate200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.slate200),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.maroon, width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Gerbang:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: const Text('Masuk', style: TextStyle(fontSize: 12)),
+                            value: 'masuk',
+                            groupValue: gateType,
+                            activeColor: AppTheme.maroon,
+                            onChanged: (val) {
+                              setStateDialog(() {
+                                gateType = val!;
+                                gateId = 'GATE_MASUK_1';
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: const Text('Keluar', style: TextStyle(fontSize: 12)),
+                            value: 'keluar',
+                            groupValue: gateType,
+                            activeColor: AppTheme.maroon,
+                            onChanged: (val) {
+                              setStateDialog(() {
+                                gateType = val!;
+                                gateId = 'GATE_KELUAR_1';
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: TextButton.styleFrom(foregroundColor: AppTheme.slate500),
+                  child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.maroon,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    if (rfidCtrl.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('UID RFID tidak boleh kosong')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(ctx, true);
+                  },
+                  child: const Text('Upload & Scan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        ),
+      ) ?? false;
+
+      if (confirmed && mounted) {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppTheme.maroon),
+                    SizedBox(height: 16),
+                    Text('Mengirim foto & memvalidasi...', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        try {
+          final dio = ref.read(dioProvider);
+          final mimeSubtype = 'jpeg';
+
+          // Create form data
+          final formData = FormData.fromMap({
+            'rfid_uid': rfidCtrl.text,
+            'gate_type': gateType,
+            'gate_id': gateId,
+            'file': MultipartFile.fromBytes(
+              bytes,
+              filename: 'webcam_capture.jpg',
+              contentType: MediaType('image', mimeSubtype),
+            ),
+          });
+
+          final response = await dio.post(
+            'gate/upload-validate',
+            data: formData,
+          );
+
+          if (mounted) {
+            Navigator.pop(context); // Pop loading dialog
+            
+            final action = response.data['action'] ?? 'keep_closed';
+            final message = response.data['message'] ?? '';
+            final detail = response.data['validation_detail'] ?? '';
+            final studentName = response.data['student_name'];
+            final plateNumber = response.data['plate_number'];
+
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    Icon(
+                      action == 'open_gate' ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      color: action == 'open_gate' ? Colors.green : Colors.red,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        action == 'open_gate' ? 'Validasi Berhasil' : 'Akses Ditolak',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (studentName != null) ...[
+                      Text('Mahasiswa: $studentName', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                    ],
+                    if (plateNumber != null) ...[
+                      Text('Plat: $plateNumber', style: const TextStyle(fontFamily: 'Courier', fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                    ],
+                    Text('Pesan: $message'),
+                    const SizedBox(height: 4),
+                    Text('Detail: $detail', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+
+            // Trigger global refresh
+            ref.read(refreshTriggerProvider.notifier).state++;
+          }
+        } catch (e) {
+          if (mounted) {
+            Navigator.pop(context); // Pop loading dialog
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Gagal: $e'),
+                backgroundColor: AppTheme.maroon,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error capturing frame: $e');
+    } finally {
+      rfidCtrl.dispose();
+    }
   }
 
   @override
@@ -531,19 +1012,53 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          Text(
-                            _showCamera && _cameraUrl != null
-                                ? 'LIVE — Gate Camera'
-                                : 'OFFLINE',
-                            style: TextStyle(
-                                color: _showCamera
-                                    ? Colors.greenAccent
-                                    : const Color(0xFF94A3B8),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.5),
+                          Expanded(
+                            child: Text(
+                              _showCamera && _cameraUrl != null
+                                  ? 'LIVE — Gate Camera'
+                                  : 'OFFLINE',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: _showCamera
+                                      ? Colors.greenAccent
+                                      : const Color(0xFF94A3B8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5),
+                            ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 8),
+                          if (_showCamera && _cameraType == 'device_camera') ...[
+                            GestureDetector(
+                              onTap: _captureAndScanDeviceCamera,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.emerald.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: AppTheme.emerald.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(IconlyLight.scan,
+                                        color: Colors.white,
+                                        size: 14),
+                                    SizedBox(width: 5),
+                                    Text('Scan Plat',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                           GestureDetector(
                             onTap: _showCameraDialog,
                             child: Container(
@@ -585,7 +1100,9 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
                               borderRadius: const BorderRadius.only(
                                   bottomLeft: Radius.circular(20),
                                   bottomRight: Radius.circular(20)),
-                              child: WebMjpegViewer(streamUrl: _cameraUrl!),
+                              child: _cameraType == 'device_camera'
+                                  ? WebCameraViewer(controller: _cameraController)
+                                  : WebMjpegViewer(streamUrl: _cameraUrl!),
                             )
                           : const Center(
                               child: Column(
@@ -1293,11 +1810,13 @@ class _AccessRequestQueueTabState extends ConsumerState<AccessRequestQueueTab> {
         builder: (context, setStateDialog) => AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
+          title: Row(
+            children: const [
               Icon(Icons.close_rounded, color: AppTheme.maroon),
               SizedBox(width: 8),
-              Text('Tolak Permintaan'),
+              Expanded(
+                child: Text('Tolak Permintaan'),
+              ),
             ],
           ),
           content: SingleChildScrollView(

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  ml-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart_campus_ml_service
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      - BACKEND_URL=https://parkirkampus.my.id/api/gate/ml/plate-detect
+      - CAMERA_URL=http://192.168.1.7:8080/video
+    volumes:
+      - easyocr-cache:/root/.EasyOCR
+      - huggingface-cache:/root/.cache/huggingface
+
+volumes:
+  easyocr-cache:
+  huggingface-cache:

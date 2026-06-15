@@ -33,7 +33,7 @@ from huggingface_hub import hf_hub_download
 #  KONFIGURASI & STRATEGI FALLBACK
 # ═══════════════════════════════════════════
 
-BACKEND_URL = "http://127.0.0.1:8000/api/gate/ml/plate-detect"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000/api/gate/ml/plate-detect")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(
@@ -381,7 +381,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print("  ML PLATE DETECTION SERVICE")
     print(f"  Mode: {'PRODUCTION (Real ML)' if USE_REAL_ML else 'DEVELOPMENT (Simulator)'}")
-    print("  Endpoint: http://127.0.0.1:5000")
+    print("  Endpoint: http://127.0.0.1:8765")
     print("=" * 60)
     
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=8765)

@@ -9,3 +9,5 @@ python-multipart
 pydantic
 pydantic-settings
 httpx
+opencv-python-headless
+

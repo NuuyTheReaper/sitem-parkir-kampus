@@ -114,6 +114,7 @@ Nilai yang umum dipakai:
 | POST | `/api/gate/emergency-action` | Petugas/Admin | Manual override gerbang & tamu darurat |
 | GET | `/api/gate/emergency-guests` | Petugas/Admin | List tamu darurat yang sedang di dalam |
 | GET | `/api/gate/stats/capacity` | Public saat ini | Kapasitas parkir |
+| GET | `/api/gate/camera-stream` | Public saat ini | Proxy/Transcode RTSP stream ke MJPEG |
 | WS | `/api/gate/monitor/live` | Public saat ini | Live monitor event gate |
 | WS | `/api/gate/petugas/notifications` | Public saat ini | Notifikasi request akses baru |
 
@@ -1235,6 +1236,27 @@ Response:
     "waktu_masuk": "2026-06-08T15:30:00.000Z"
   }
 ]
+```
+
+### GET `/api/gate/camera-stream`
+
+Proxy & transcode RTSP stream dari IP Camera menjadi format HTTP MJPEG agar bisa dirender langsung di web browser (misal widget `WebMjpegViewer` pada Flutter Web).
+
+Auth: tidak memakai token di kode saat ini (public).
+
+Query parameters:
+
+| Field | Type | Required | Keterangan |
+|---|---|---|---|
+| `camera_url` | string | yes | URL RTSP lengkap IP Cam Anda (contoh: `rtsp://admin:123@192.168.1.100:554/stream1`) |
+
+Response:
+Mengembalikan multipart stream (`multipart/x-mixed-replace; boundary=frame`) yang berisi frame gambar JPEG dari video secara real-time.
+
+Curl:
+
+```bash
+curl "$BASE_URL/api/gate/camera-stream?camera_url=rtsp%3A%2F%2Fadmin%3A123%40192.168.1.100%3A554%2Fstream1"
 ```
 
 ## WebSocket

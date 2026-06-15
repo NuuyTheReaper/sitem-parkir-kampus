@@ -793,6 +793,76 @@ def get_emergency_guests(db: Session = Depends(get_db), current_user: models.Use
     ]
 
 
+@router.get("/scan-emergency-plate")
+async def scan_emergency_plate(
+    gate_type: str,
+    camera_url: str = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_petugas)
+):
+    """
+    Triggers an ANPR scan on the camera for the emergency gate,
+    and returns the scanned plate and the previous name associated with that plate.
+    """
+    if gate_type not in ["masuk", "keluar"]:
+        raise HTTPException(status_code=400, detail="gate_type must be 'masuk' or 'keluar'")
+
+    gate_id = f"GATE_{gate_type.upper()}_EMERGENCY"
+    detected_plate = ""
+
+    try:
+        scan = await _request_anpr_scan(
+            gate_id=gate_id,
+            camera_url=camera_url,
+        )
+        detected_plate = scan.detected_plate or ""
+    except Exception as e:
+        logger.error(f"Error scanning emergency plate: {e}")
+        detected_plate = ""
+
+    previous_name = ""
+    if detected_plate:
+        normalized_detected = normalize_plate(detected_plate)
+        # Find latest emergency guest with this plate
+        recent_guests = db.query(models.EmergencyGuest).order_by(models.EmergencyGuest.id.desc()).all()
+        for g in recent_guests:
+            if normalize_plate(g.plat_nomor) == normalized_detected:
+                previous_name = g.nama
+                break
+
+    return {
+        "status": "success",
+        "detected_plate": detected_plate,
+        "previous_name": previous_name
+    }
+
+
+@router.get("/emergency-guest-lookup")
+def lookup_emergency_guest(
+    plate: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_petugas)
+):
+    """
+    Looks up the previous guest name associated with the provided plate number.
+    """
+    if not plate:
+        return {"status": "success", "previous_name": ""}
+
+    normalized_detected = normalize_plate(plate)
+    previous_name = ""
+    recent_guests = db.query(models.EmergencyGuest).order_by(models.EmergencyGuest.id.desc()).all()
+    for g in recent_guests:
+        if normalize_plate(g.plat_nomor) == normalized_detected:
+            previous_name = g.nama
+            break
+
+    return {
+        "status": "success",
+        "previous_name": previous_name
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  ENDPOINT: Parking Capacity Stats
 # ═══════════════════════════════════════════════════════════════════
@@ -813,3 +883,45 @@ def get_parking_capacity(db: Session = Depends(get_db)):
         "parked": parked_count,
         "available": max(0, total_capacity - parked_count)
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINT: RTSP to MJPEG Stream Proxy
+# ═══════════════════════════════════════════════════════════════════
+from fastapi.responses import StreamingResponse
+
+@router.get("/camera-stream")
+def proxy_camera_stream(camera_url: str):
+    """
+    Proxy & Transcode RTSP stream dari IP Cam menjadi MJPEG agar bisa dirender di Web.
+    """
+    import cv2
+    import time
+
+    def generate_frames():
+        cap = cv2.VideoCapture(camera_url)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        while True:
+            success, frame = cap.read()
+            if not success:
+                time.sleep(1)
+                cap = cv2.VideoCapture(camera_url)
+                continue
+            
+            # Compress to JPEG with 80% quality
+            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if not ret:
+                continue
+
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            
+            time.sleep(0.04)
+
+    return StreamingResponse(
+        generate_frames(), 
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+

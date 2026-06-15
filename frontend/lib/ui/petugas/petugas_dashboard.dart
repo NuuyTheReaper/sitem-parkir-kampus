@@ -1507,163 +1507,337 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
     final nameController = TextEditingController();
     final vehicleController = TextEditingController();
     int? selectedGuestId;
+    bool hasScanned = false;
+    bool isScanning = false;
+    String scanStatus = "";
+
+    Future<void> lookupGuestName(String plate, StateSetter setStateDialog, BuildContext dialogCtx) async {
+      if (plate.trim().isEmpty) return;
+      try {
+        final response = await ref.read(dioProvider).get(
+          'gate/emergency-guest-lookup',
+          queryParameters: {'plate': plate.trim()},
+        );
+        final data = response.data;
+        if (!dialogCtx.mounted) return;
+        if (data['status'] == 'success') {
+          final previousName = data['previous_name'] as String? ?? '';
+          if (previousName.isNotEmpty) {
+            setStateDialog(() {
+              nameController.text = previousName;
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Nama tamu otomatis diisi dari riwayat kunjungan sebelumnya'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Tidak ada riwayat nama untuk plat ini'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+        }
+      } catch (e) {
+        if (mounted && dialogCtx.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal mencari riwayat: $e')),
+          );
+        }
+      }
+    }
+
+    Future<void> doScan(StateSetter setStateDialog, BuildContext dialogCtx) async {
+      if (!dialogCtx.mounted) return;
+      setStateDialog(() {
+        isScanning = true;
+        scanStatus = "Memindai plat nomor...";
+      });
+      try {
+        final queryParams = {
+          'gate_type': gate,
+        };
+        if (_cameraUrl != null && _cameraUrl!.isNotEmpty) {
+          queryParams['camera_url'] = _cameraUrl!;
+        }
+
+        final response = await ref.read(dioProvider).get(
+          'gate/scan-emergency-plate',
+          queryParameters: queryParams,
+        );
+        final data = response.data;
+        if (!dialogCtx.mounted) return;
+        if (data['status'] == 'success') {
+          final detectedPlate = data['detected_plate'] as String? ?? '';
+          final previousName = data['previous_name'] as String? ?? '';
+          setStateDialog(() {
+            isScanning = false;
+            if (detectedPlate.isNotEmpty) {
+              vehicleController.text = detectedPlate;
+              scanStatus = "Pemindaian berhasil!";
+            } else {
+              scanStatus = "Kamera tidak mendeteksi plat nomor.";
+            }
+            if (previousName.isNotEmpty) {
+              nameController.text = previousName;
+            }
+          });
+        } else {
+          setStateDialog(() {
+            isScanning = false;
+            scanStatus = "Gagal memindai plat.";
+          });
+        }
+      } catch (e) {
+        if (!dialogCtx.mounted) return;
+        setStateDialog(() {
+          isScanning = false;
+          scanStatus = "Error pemindaian: $e";
+        });
+      }
+    }
 
     bool confirmed = await showDialog(
           context: context,
           builder: (ctx) => StatefulBuilder(
-            builder: (context, setStateDialog) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(IconlyLight.danger, color: Colors.orange, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Peringatan: Emergency $gate',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                    ),
-                  ),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+            builder: (contextDialog, setStateDialog) {
+              if (!hasScanned) {
+                hasScanned = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  doScan(setStateDialog, contextDialog);
+                });
+              }
+
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
                   children: [
-                    const Text(
-                      'Aksi ini akan membuka gerbang secara paksa dan dicatat oleh sistem.',
-                      style: TextStyle(color: AppTheme.slate500, fontSize: 13),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(IconlyLight.danger, color: Colors.orange, size: 24),
                     ),
-                    const SizedBox(height: 20),
-                    if (gate == 'keluar' && guests.isNotEmpty) ...[
-                      DropdownButtonFormField<int>(
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          hintText: 'Pilih Tamu Darurat (Opsional)',
-                          prefixIcon: const Icon(IconlyLight.user_1, size: 20),
-                          filled: true,
-                          fillColor: AppTheme.slate50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppTheme.slate200),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                        value: selectedGuestId,
-                        items: guests.map((g) {
-                          return DropdownMenuItem<int>(
-                            value: g['id'] as int,
-                            child: Text(
-                              '${g['nama']} (${g['plat_nomor']})',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          setStateDialog(() {
-                            selectedGuestId = val;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'ATAU isi manual jika tamu tidak ada di daftar:',
-                        style: TextStyle(fontSize: 12, color: AppTheme.slate400, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (gate == 'masuk' || (gate == 'keluar' && selectedGuestId == null)) ...[
-                      TextField(
-                        controller: nameController,
-                        decoration: InputDecoration(
-                          hintText: 'Nama Tamu',
-                          prefixIcon: const Icon(IconlyLight.profile, size: 20),
-                          filled: true,
-                          fillColor: AppTheme.slate50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppTheme.slate200),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: vehicleController,
-                        decoration: InputDecoration(
-                          hintText: 'Plat Kendaraan',
-                          prefixIcon: const Icon(IconlyLight.document, size: 20),
-                          filled: true,
-                          fillColor: AppTheme.slate50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppTheme.slate200),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    TextField(
-                      controller: reasonController,
-                      maxLines: 2,
-                      decoration: InputDecoration(
-                        hintText: 'Alasan darurat (opsional)...',
-                        prefixIcon: const Padding(
-                          padding: EdgeInsets.only(bottom: 24),
-                          child: Icon(IconlyLight.chat, size: 20),
-                        ),
-                        filled: true,
-                        fillColor: AppTheme.slate50,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.slate200),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Peringatan: Emergency $gate',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                       ),
                     ),
                   ],
                 ),
-              ),
-              actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.slate500),
-                  child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (gate == 'masuk' && (nameController.text.isEmpty || vehicleController.text.isEmpty)) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('Nama dan Kendaraan wajib diisi', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
-                      );
-                      return;
-                    }
-                    if (gate == 'keluar' && selectedGuestId == null && (nameController.text.isEmpty || vehicleController.text.isEmpty)) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('Pilih tamu atau isi manual', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
-                      );
-                      return;
-                    }
-                    Navigator.pop(ctx, true);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Aksi ini akan membuka gerbang secara paksa dan dicatat oleh sistem.',
+                        style: TextStyle(color: AppTheme.slate500, fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                      if (scanStatus.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isScanning
+                                ? Colors.orange.withOpacity(0.1)
+                                : (scanStatus.contains('berhasil') ? Colors.green.withOpacity(0.1) : AppTheme.slate100),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isScanning
+                                  ? Colors.orange.withOpacity(0.3)
+                                  : (scanStatus.contains('berhasil') ? Colors.green.withOpacity(0.3) : AppTheme.slate200),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              if (isScanning)
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                                )
+                              else
+                                Icon(
+                                  scanStatus.contains('berhasil') ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
+                                  color: scanStatus.contains('berhasil') ? Colors.green : AppTheme.slate500,
+                                  size: 16,
+                                ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  scanStatus,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: isScanning
+                                        ? Colors.orange[800]
+                                        : (scanStatus.contains('berhasil') ? Colors.green[800] : AppTheme.slate600),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (gate == 'keluar' && guests.isNotEmpty) ...[
+                        DropdownButtonFormField<int>(
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            hintText: 'Pilih Tamu Darurat (Opsional)',
+                            prefixIcon: const Icon(IconlyLight.user_1, size: 20),
+                            filled: true,
+                            fillColor: AppTheme.slate50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppTheme.slate200),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                          value: selectedGuestId,
+                          items: guests.map((g) {
+                            return DropdownMenuItem<int>(
+                              value: g['id'] as int,
+                              child: Text(
+                                '${g['nama']} (${g['plat_nomor']})',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setStateDialog(() {
+                              selectedGuestId = val;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'ATAU isi manual jika tamu tidak ada di daftar:',
+                          style: TextStyle(fontSize: 12, color: AppTheme.slate400, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (gate == 'masuk' || (gate == 'keluar' && selectedGuestId == null)) ...[
+                        TextField(
+                          controller: nameController,
+                          decoration: InputDecoration(
+                            hintText: 'Nama Tamu',
+                            prefixIcon: const Icon(IconlyLight.profile, size: 20),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.search_rounded, color: AppTheme.slate400, size: 20),
+                              tooltip: 'Cari nama dari riwayat plat',
+                              onPressed: () => lookupGuestName(vehicleController.text, setStateDialog, contextDialog),
+                            ),
+                            filled: true,
+                            fillColor: AppTheme.slate50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppTheme.slate200),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: vehicleController,
+                          decoration: InputDecoration(
+                            hintText: 'Plat Kendaraan',
+                            prefixIcon: const Icon(IconlyLight.document, size: 20),
+                            suffixIcon: isScanning
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12.0),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                  )
+                                : IconButton(
+                                    icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.orange, size: 20),
+                                    tooltip: 'Pindai Ulang',
+                                    onPressed: () => doScan(setStateDialog, contextDialog),
+                                  ),
+                            filled: true,
+                            fillColor: AppTheme.slate50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppTheme.slate200),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      TextField(
+                        controller: reasonController,
+                        maxLines: 2,
+                        decoration: InputDecoration(
+                          hintText: 'Alasan darurat (opsional)...',
+                          prefixIcon: const Padding(
+                            padding: EdgeInsets.only(bottom: 24),
+                            child: Icon(IconlyLight.chat, size: 20),
+                          ),
+                          filled: true,
+                          fillColor: AppTheme.slate50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppTheme.slate200),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: const Text('Konfirmasi Buka', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
-              ],
-            ),
+                actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.slate500),
+                    child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (gate == 'masuk' && (nameController.text.isEmpty || vehicleController.text.isEmpty)) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Nama dan Kendaraan wajib diisi', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
+                      if (gate == 'keluar' && selectedGuestId == null && (nameController.text.isEmpty || vehicleController.text.isEmpty)) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Pilih tamu atau isi manual', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
+                      Navigator.pop(ctx, true);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    child: const Text('Konfirmasi Buka', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              );
+            },
           ),
         ) ??
         false;

@@ -199,8 +199,8 @@ async def scan_plate(request: ScanRequest):
     """
     camera_url = request.camera_url or os.getenv("CAMERA_URL") or "http://192.168.1.7:8080/video"
     
-    if isinstance(camera_url, str) and camera_url.isdigit():
-        video_source = int(camera_url)
+    if isinstance(camera_url, str) and (camera_url.isdigit() or camera_url == "device_camera"):
+        video_source = int(camera_url) if camera_url.isdigit() else 0
     else:
         video_source = camera_url
 

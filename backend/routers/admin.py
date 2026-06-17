@@ -55,9 +55,12 @@ async def create_mahasiswa(user: UserCreate, db: Session = Depends(get_db)):
         role=models.RoleEnum.mahasiswa,
         password_hash=get_password_hash(user.password)
     )
+    if user.rfid_uid:
+        db_user.rfid_cards.append(models.RFIDCard(rfid_uid=user.rfid_uid))
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+            
     try:
         from routers.iot import manager
         await manager.broadcast({"type": "update", "message": "mahasiswa_created"})
@@ -78,10 +81,18 @@ async def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = 
     if user_update.nama: db_user.nama = user_update.nama
     if user_update.prodi_id is not None: db_user.prodi_id = user_update.prodi_id
     if user_update.angkatan is not None: db_user.angkatan = user_update.angkatan
-    if user_update.rfid_uid:
-        if db.query(models.User).filter(models.User.rfid_uid == user_update.rfid_uid, models.User.id != user_id).first():
-            raise HTTPException(status_code=400, detail="RFID already registered")
-        db_user.rfid_uid = user_update.rfid_uid
+    if user_update.rfid_uid is not None:
+        if user_update.rfid_uid != "":
+            if user_update.rfid_uid != db_user.rfid_uid:
+                if db.query(models.User).filter(models.User.rfid_uid == user_update.rfid_uid, models.User.id != user_id).first():
+                    raise HTTPException(status_code=400, detail="RFID already registered")
+                db_user.rfid_uid = user_update.rfid_uid
+                db_user.rfid_cards.clear()
+                db_user.rfid_cards.append(models.RFIDCard(rfid_uid=user_update.rfid_uid))
+        else:
+            db_user.rfid_uid = None
+            db_user.rfid_cards.clear()
+            
     if user_update.password: db_user.password_hash = get_password_hash(user_update.password)
     
     db.commit()

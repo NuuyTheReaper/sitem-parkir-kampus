@@ -123,80 +123,251 @@ class _PetugasDashboardState extends ConsumerState<PetugasDashboard> {
     } catch (_) {}
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final pendingCount = ref.watch(pendingCountProvider);
+  Widget _wrapResponsive(Widget child, bool isDesktop) {
+    if (!isDesktop) return child;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 850),
+        child: child,
+      ),
+    );
+  }
 
-    return Scaffold(
-      appBar: AppHeader(
-        title: 'Command Center',
-        subtitle: 'Smart Parking System',
-        actions: [
+  Widget _buildDesktopSidebar(BuildContext context, List<NavBarItem> items) {
+    return Container(
+      width: 260,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text(
+              'MENU UTAMA',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.slate400,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView.separated(
+              itemCount: items.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final isSelected = _currentIndex == index;
+                return InkWell(
+                  onTap: () {
+                    setState(() => _currentIndex = index);
+                    if (index == 1) _refreshBadge();
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.maroon.withOpacity(0.08)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.maroon.withOpacity(0.12)
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          item.icon,
+                          color: isSelected ? AppTheme.maroon : AppTheme.slate500,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            item.label,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? AppTheme.maroon
+                                  : AppTheme.slate700,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        if (item.badgeCount != null && item.badgeCount! > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.maroon,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${item.badgeCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              color: AppTheme.slate50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.slate100),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                    color: Colors.greenAccent,
-                    shape: BoxShape.circle,
-                  ),
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: AppTheme.maroon.withOpacity(0.1),
+                  child: const Icon(Icons.person, color: AppTheme.maroon, size: 18),
                 ),
-                const SizedBox(width: 6),
-                const Text(
-                  'ONLINE',
-                  style: TextStyle(
-                    color: Colors.greenAccent,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text(
+                        'Petugas Parkir',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.slate800,
+                        ),
+                      ),
+                      Text(
+                        'Command Center',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppTheme.slate400,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded,
-                color: Colors.white70, size: 22),
-            onPressed: () {
-              _refreshBadge();
-              ref.read(refreshTriggerProvider.notifier).state++;
-            },
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pendingCount = ref.watch(pendingCountProvider);
+    final size = MediaQuery.of(context).size;
+    final isDesktop = size.width >= 900;
+
+    final navItems = [
+      const NavBarItem(label: 'Monitor', icon: Icons.monitor_rounded),
+      NavBarItem(
+        label: 'Permintaan',
+        icon: Icons.pending_actions_rounded,
+        badgeCount: pendingCount,
+      ),
+      const NavBarItem(label: 'Cari', icon: Icons.person_search_rounded),
+      const NavBarItem(label: 'Profil', icon: Icons.account_circle_rounded),
+    ];
+
+    final Widget bodyContent = IndexedStack(
+      index: _currentIndex,
+      children: [
+        const LiveMonitorTab(),
+        _wrapResponsive(PermintaanTabWithFilter(onCountChanged: _refreshBadge), isDesktop),
+        _wrapResponsive(const SearchMemberTab(), isDesktop),
+        _wrapResponsive(const ProfileTab(), isDesktop),
+      ],
+    );
+
+    final appBarWidget = AppHeader(
+      title: 'Command Center',
+      subtitle: 'Smart Parking System',
+      actions: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
-      ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          const LiveMonitorTab(),
-          PermintaanTabWithFilter(onCountChanged: _refreshBadge),
-          const SearchMemberTab(),
-          const ProfileTab(),
-        ],
-      ),
+          child: Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Colors.greenAccent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'ONLINE',
+                style: TextStyle(
+                  color: Colors.greenAccent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded,
+              color: Colors.white70, size: 22),
+          onPressed: () {
+            _refreshBadge();
+            ref.read(refreshTriggerProvider.notifier).state++;
+          },
+        ),
+      ],
+    );
+
+    if (isDesktop) {
+      return Scaffold(
+        appBar: appBarWidget,
+        body: Row(
+          children: [
+            _buildDesktopSidebar(context, navItems),
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(child: bodyContent),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: appBarWidget,
+      body: bodyContent,
       bottomNavigationBar: AppNavBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() => _currentIndex = index);
           if (index == 1) _refreshBadge();
         },
-        items: [
-          const NavBarItem(label: 'Monitor', icon: Icons.monitor_rounded),
-          NavBarItem(
-            label: 'Permintaan',
-            icon: Icons.pending_actions_rounded,
-            badgeCount: pendingCount,
-          ),
-          const NavBarItem(label: 'Cari', icon: Icons.person_search_rounded),
-          const NavBarItem(label: 'Profil', icon: Icons.account_circle_rounded),
-        ],
+        items: navItems,
       ),
     );
   }
@@ -208,6 +379,8 @@ class SessionStatsSummary extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(refreshTriggerProvider); // Rebuild & refetch on global refresh
+    final size = MediaQuery.of(context).size;
+    final isDesktop = size.width >= 900;
 
     return FutureBuilder(
       future: Future.wait([
@@ -216,6 +389,20 @@ class SessionStatsSummary extends ConsumerWidget {
       ]),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          if (isDesktop) {
+            return Column(
+              children: List.generate(
+                3,
+                (_) => Container(
+                  height: 90,
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                      color: AppTheme.slate100,
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            );
+          }
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -239,12 +426,10 @@ class SessionStatsSummary extends ConsumerWidget {
         final parked = (capData['parked'] ?? 0) as int;
         final total = (capData['total'] ?? 100) as int;
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+        if (isDesktop) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               _StatCard(
                 icon: Icons.directions_car_filled_rounded,
                 label: 'Terisi',
@@ -252,25 +437,62 @@ class SessionStatsSummary extends ConsumerWidget {
                 color: AppTheme.teal,
                 progress: total > 0 ? parked / total : 0,
                 delayMs: 0,
+                isExpanded: false,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(height: 12),
               _StatCard(
                 icon: Icons.check_circle_rounded,
                 label: 'Selesai',
                 value: '${stats['handled_count']}',
                 color: AppTheme.emerald,
                 delayMs: 100,
+                isExpanded: false,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(height: 12),
               _StatCard(
                 icon: Icons.assignment_late_rounded,
                 label: 'STNK',
                 value: '${stats['pending_stnk'] ?? stats['stnk_pending_count'] ?? 0}',
                 color: Colors.orange,
                 delayMs: 200,
+                isExpanded: false,
               ),
             ],
-          ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _StatCard(
+                  icon: Icons.directions_car_filled_rounded,
+                  label: 'Terisi',
+                  value: '$parked/$total',
+                  color: AppTheme.teal,
+                  progress: total > 0 ? parked / total : 0,
+                  delayMs: 0,
+                ),
+                const SizedBox(width: 10),
+                _StatCard(
+                  icon: Icons.check_circle_rounded,
+                  label: 'Selesai',
+                  value: '${stats['handled_count']}',
+                  color: AppTheme.emerald,
+                  delayMs: 100,
+                ),
+                const SizedBox(width: 10),
+                _StatCard(
+                  icon: Icons.assignment_late_rounded,
+                  label: 'STNK',
+                  value: '${stats['pending_stnk'] ?? stats['stnk_pending_count'] ?? 0}',
+                  color: Colors.orange,
+                  delayMs: 200,
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -285,6 +507,7 @@ class _StatCard extends StatelessWidget {
   final Color color;
   final double? progress;
   final int delayMs;
+  final bool isExpanded;
 
   const _StatCard({
     required this.label,
@@ -293,78 +516,83 @@ class _StatCard extends StatelessWidget {
     required this.color,
     this.progress,
     this.delayMs = 0,
+    this.isExpanded = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.slate200),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.slate900.withOpacity(0.02),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 18, color: color),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                color: AppTheme.slate500,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.slate900,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ),
-            if (progress != null) ...[
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: progress!,
-                  minHeight: 4,
-                  backgroundColor: color.withOpacity(0.1),
-                  color: color,
-                ),
-              ),
-            ],
-          ],
-        ),
+    Widget cardContent = Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.slate200),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.slate900.withOpacity(0.02),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
-    ).animate(delay: delayMs.ms).fadeIn(duration: 400.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: AppTheme.slate500,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.slate900,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress!,
+                minHeight: 4,
+                backgroundColor: color.withOpacity(0.1),
+                color: color,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (isExpanded) {
+      cardContent = Expanded(child: cardContent);
+    }
+
+    return cardContent.animate(delay: delayMs.ms).fadeIn(duration: 400.ms, curve: Curves.easeOut).slideY(begin: 0.1, end: 0, duration: 400.ms, curve: Curves.easeOut);
   }
 }
 
@@ -965,9 +1193,736 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
     }
   }
 
+  Widget _buildSectionTitle(IconData icon, String title) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+              color: AppTheme.maroon.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 16, color: AppTheme.maroon),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: AppTheme.slate900),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmergencySectionCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        boxShadow: AppTheme.subtleShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(IconlyLight.danger, color: Colors.orange, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Emergency Override',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Aksi di bawah ini akan membuka gerbang secara paksa dan dicatat sebagai aksi darurat.',
+            style: TextStyle(fontSize: 12, color: AppTheme.slate500),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _handleEmergencyOpen('masuk'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(IconlyLight.login, size: 16),
+                  label: const Text('Gate Masuk',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _handleEmergencyOpen('keluar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(IconlyLight.logout, size: 16),
+                  label: const Text('Gate Keluar',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraSection({required bool isDesktop}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 10),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E293B),
+              borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _showCamera && _cameraUrl != null
+                        ? Colors.greenAccent
+                        : const Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                    boxShadow: [],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _showCamera && _cameraUrl != null
+                        ? 'LIVE — Gate Camera'
+                        : 'OFFLINE',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: _showCamera && _cameraUrl != null
+                            ? Colors.greenAccent
+                            : const Color(0xFF94A3B8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (_showCamera && _cameraType == 'device_camera') ...[
+                  GestureDetector(
+                    onTap: _captureAndScanDeviceCamera,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.emerald.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: AppTheme.emerald.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(IconlyLight.scan,
+                              color: Colors.white,
+                              size: 14),
+                          SizedBox(width: 5),
+                          Text('Scan Plat',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                GestureDetector(
+                  onTap: _showCameraDialog,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: Colors.white.withOpacity(0.1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                            _showCamera && _cameraUrl != null
+                                ? IconlyLight.setting
+                                : IconlyLight.camera,
+                            color: const Color(0xFF94A3B8),
+                            size: 14),
+                        const SizedBox(width: 5),
+                        Text(_showCamera && _cameraUrl != null ? 'Setting' : 'Connect',
+                            style: const TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(20),
+                bottomRight: Radius.circular(20)),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _showCamera && _cameraUrl != null
+                  ? Stack(
+                      children: [
+                        Positioned.fill(
+                          child: _cameraType == 'device_camera'
+                              ? WebCameraViewer(controller: _cameraController)
+                              : WebMjpegViewer(streamUrl: _cameraUrl!),
+                        ),
+                        // HUD Gradient Overlay
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withOpacity(0.4),
+                                  Colors.transparent,
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.5),
+                                ],
+                                stops: const [0.0, 0.2, 0.8, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Blinking REC Indicator
+                        Positioned(
+                          top: 12,
+                          left: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                                 .fadeOut(duration: 500.ms),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'REC',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Live Clock
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: StreamBuilder<DateTime>(
+                              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
+                              builder: (context, snapshot) {
+                                final now = snapshot.data ?? DateTime.now();
+                                final timeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+                                return Text(
+                                  timeStr,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'Courier',
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                        // Bottom HUD Labels
+                        Positioned(
+                          bottom: 12,
+                          left: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              _cameraType == 'device_camera' ? 'CAM_GATE_ENTRY_WEBCAM' : 'CAM_GATE_ENTRY_IP',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontFamily: 'Courier',
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.emerald.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppTheme.emerald.withOpacity(0.5)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.shield, color: AppTheme.emerald, size: 10),
+                                SizedBox(width: 4),
+                                Text(
+                                  'SECURE FEED',
+                                  style: TextStyle(
+                                    color: AppTheme.emerald,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Container(
+                            color: const Color(0xFF0F172A),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(IconlyLight.camera,
+                                      color: const Color(0xFFEF4444).withOpacity(0.6), size: 48)
+                                    .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                                    .fadeOut(duration: 800.ms),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'NO SIGNAL',
+                                    style: TextStyle(
+                                      color: Color(0xFFEF4444),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Tap "Connect" to configure gate camera',
+                                    style: TextStyle(
+                                      color: Color(0xFF475569),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const Positioned(
+                          top: 12,
+                          left: 12,
+                          child: Text(
+                            'LIVE GATE FEED — OFFLINE',
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontFamily: 'Courier',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartSection(AsyncValue<List<dynamic>> chartAsync) {
+    return chartAsync.when(
+      data: (chartData) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 20, 20, 12),
+        decoration: AppTheme.modernCard,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                      color: AppTheme.tealLight,
+                      borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(IconlyLight.chart,
+                      size: 16, color: AppTheme.teal),
+                ),
+                const SizedBox(width: 10),
+                const Text('Tren Parkir (7 Hari)',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: AppTheme.slate900)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ParkingChart(chartData: chartData),
+          ],
+        ),
+      ),
+      loading: () => const Center(
+          child: Padding(
+              padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator())),
+      error: (e, _) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildAlprSectionHeader() {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+              color: AppTheme.emerald.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8)),
+          child: const Icon(IconlyLight.scan,
+              size: 16, color: AppTheme.emerald),
+        ),
+        const SizedBox(width: 10),
+        const Text('ALPR Output',
+            style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+                color: AppTheme.slate900)),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+              color: AppTheme.emerald.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6)),
+          child: Text('${logs.length} scan',
+              style: const TextStyle(
+                  fontSize: 10,
+                  color: AppTheme.emerald,
+                  fontWeight: FontWeight.w700)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAlprSectionContent() {
+    if (logs.isEmpty) {
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Center(
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(IconlyLight.scan,
+                    size: 32, color: Color(0xFF334155)),
+                SizedBox(height: 8),
+                Text('Menunggu scan kendaraan...',
+                    style: TextStyle(
+                        color: Color(0xFF475569), fontSize: 12)),
+              ]),
+        ),
+      );
+    }
+
+    return Column(
+      children: logs.map((log) {
+        final isSuccess = log['type'] == 'success';
+        final imagePath = log['image_path'];
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B).withOpacity(0.6),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSuccess
+                  ? AppTheme.emerald.withOpacity(0.3)
+                  : const Color(0xFFEF4444).withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: (isSuccess
+                          ? AppTheme.emerald
+                          : const Color(0xFFEF4444))
+                      .withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                    isSuccess
+                        ? Icons.check_circle_rounded
+                        : Icons.cancel_rounded,
+                    color: isSuccess
+                        ? AppTheme.emerald
+                        : const Color(0xFFEF4444),
+                    size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          log['plate'] ?? 'UNKNOWN',
+                          style: const TextStyle(
+                              fontFamily: 'Courier',
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              color: Colors.white,
+                              letterSpacing: 2),
+                        ),
+                        if (log['gate'] != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              log['gate'].toString().toUpperCase(),
+                              style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.white60,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${log['message'] ?? '-'} • ${log['user'] ?? '-'}',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF94A3B8)),
+                    ),
+                  ],
+                ),
+              ),
+              if (imagePath != null && imagePath.toString().isNotEmpty) ...[
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => Dialog(
+                        backgroundColor: Colors.transparent,
+                        insetPadding: const EdgeInsets.all(20),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InteractiveViewer(
+                                child: Image.network(
+                                  "${AppConstants.uploadBaseUrl}$imagePath",
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) => Container(
+                                    height: 200,
+                                    color: const Color(0xFF0F172A),
+                                    child: const Center(
+                                      child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: double.infinity,
+                                color: const Color(0xFF0F172A),
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      log['plate'] ?? 'UNKNOWN',
+                                      style: const TextStyle(
+                                        fontFamily: 'Courier',
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      log['user'] ?? '',
+                                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(9),
+                      child: Image.network(
+                        "${AppConstants.uploadBaseUrl}$imagePath",
+                        width: 70,
+                        height: 46,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 70,
+                          height: 46,
+                          color: Colors.white.withOpacity(0.05),
+                          child: const Icon(Icons.image_not_supported, size: 16, color: Colors.white24),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final chartAsync = ref.watch(activityChartProvider);
+    final size = MediaQuery.of(context).size;
+    final isDesktop = size.width >= 900;
+
+    if (isDesktop) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                _buildCameraSection(isDesktop: true),
+                const SizedBox(height: 24),
+                _buildAlprSectionHeader(),
+                const SizedBox(height: 12),
+                _buildAlprSectionContent(),
+              ],
+            ),
+          ),
+          const VerticalDivider(width: 1, thickness: 1),
+          Expanded(
+            flex: 2,
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                _buildSectionTitle(Icons.dashboard_rounded, 'Overview & Statistik'),
+                const SizedBox(height: 12),
+                const SessionStatsSummary(),
+                const SizedBox(height: 24),
+                _buildEmergencySectionCard(),
+                const SizedBox(height: 24),
+                _buildChartSection(chartAsync),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
 
     return Column(
       children: [
@@ -975,446 +1930,19 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
           child: ListView(
             padding: const EdgeInsets.only(top: 16),
             children: [
-              // Quick Stats Row (capacity + handled + pending STNK)
               const SessionStatsSummary(),
               const SizedBox(height: 8),
-
-              // Live Camera Section
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1E293B),
-                        borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(20),
-                            topRight: Radius.circular(20)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: _showCamera && _cameraUrl != null
-                                  ? Colors.greenAccent
-                                  : const Color(0xFFEF4444),
-                              shape: BoxShape.circle,
-                              boxShadow: [],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _showCamera && _cameraUrl != null
-                                  ? 'LIVE — Gate Camera'
-                                  : 'OFFLINE',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  color: _showCamera
-                                      ? Colors.greenAccent
-                                      : const Color(0xFF94A3B8),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (_showCamera && _cameraType == 'device_camera') ...[
-                            GestureDetector(
-                              onTap: _captureAndScanDeviceCamera,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.emerald.withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                      color: AppTheme.emerald.withOpacity(0.3)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Icon(IconlyLight.scan,
-                                        color: Colors.white,
-                                        size: 14),
-                                    SizedBox(width: 5),
-                                    Text('Scan Plat',
-                                        style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          GestureDetector(
-                            onTap: _showCameraDialog,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color: Colors.white.withOpacity(0.1)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                      _showCamera
-                                          ? IconlyLight.setting
-                                          : IconlyLight.camera,
-                                      color: const Color(0xFF94A3B8),
-                                      size: 14),
-                                  const SizedBox(width: 5),
-                                  Text(_showCamera ? 'Setting' : 'Connect',
-                                      style: const TextStyle(
-                                          color: Color(0xFF94A3B8),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(
-                      height: 200,
-                      width: double.infinity,
-                      child: _showCamera && _cameraUrl != null
-                          ? ClipRRect(
-                              borderRadius: const BorderRadius.only(
-                                  bottomLeft: Radius.circular(20),
-                                  bottomRight: Radius.circular(20)),
-                              child: _cameraType == 'device_camera'
-                                  ? WebCameraViewer(controller: _cameraController)
-                                  : WebMjpegViewer(streamUrl: _cameraUrl!),
-                            )
-                          : const Center(
-                              child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(IconlyLight.camera,
-                                        color: Color(0xFF475569), size: 44),
-                                    SizedBox(height: 10),
-                                    Text('Kamera Belum Terhubung',
-                                        style: TextStyle(
-                                            color: Color(0xFF64748B),
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600)),
-                                    SizedBox(height: 4),
-                                    Text('Tap "Connect" untuk menyambungkan',
-                                        style: TextStyle(
-                                            color: Color(0xFF475569),
-                                            fontSize: 11)),
-                                  ]),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildCameraSection(isDesktop: false),
               const SizedBox(height: 16),
-
-              // ALPR Terminal Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                          color: AppTheme.emerald.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(IconlyLight.scan,
-                          size: 16, color: AppTheme.emerald),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text('ALPR Output',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                            color: AppTheme.slate900)),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                          color: AppTheme.emerald.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6)),
-                      child: Text('${logs.length} scan',
-                          style: const TextStyle(
-                              fontSize: 10,
-                              color: AppTheme.emerald,
-                              fontWeight: FontWeight.w700)),
-                    ),
-                  ],
-                ),
-              ),
+              _buildAlprSectionHeader(),
               const SizedBox(height: 8),
-
-              // ALPR Scan Results
-              if (logs.isEmpty)
-                Container(
-                  height: 120,
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Center(
-                    child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(IconlyLight.scan,
-                              size: 32, color: Color(0xFF334155)),
-                          SizedBox(height: 8),
-                          Text('Menunggu scan kendaraan...',
-                              style: TextStyle(
-                                  color: Color(0xFF475569), fontSize: 12)),
-                        ]),
-                  ),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    children: logs.map((log) {
-                      final isSuccess = log['type'] == 'success';
-                      final imagePath = log['image_path'];
-                      
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B).withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSuccess
-                                ? AppTheme.emerald.withOpacity(0.3)
-                                : const Color(0xFFEF4444).withOpacity(0.3),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: (isSuccess
-                                        ? AppTheme.emerald
-                                        : const Color(0xFFEF4444))
-                                    .withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                  isSuccess
-                                      ? Icons.check_circle_rounded
-                                      : Icons.cancel_rounded,
-                                  color: isSuccess
-                                      ? AppTheme.emerald
-                                      : const Color(0xFFEF4444),
-                                  size: 22),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Wrap(
-                                    crossAxisAlignment: WrapCrossAlignment.center,
-                                    spacing: 8,
-                                    runSpacing: 4,
-                                    children: [
-                                      Text(
-                                        log['plate'] ?? 'UNKNOWN',
-                                        style: const TextStyle(
-                                            fontFamily: 'Courier',
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 18,
-                                            color: Colors.white,
-                                            letterSpacing: 2),
-                                      ),
-                                      if (log['gate'] != null)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white10,
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            log['gate'].toString().toUpperCase(),
-                                            style: const TextStyle(
-                                                fontSize: 9,
-                                                color: Colors.white60,
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${log['message'] ?? '-'} • ${log['user'] ?? '-'}',
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Color(0xFF94A3B8)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (imagePath != null && imagePath.toString().isNotEmpty) ...[
-                              const SizedBox(width: 12),
-                              GestureDetector(
-                                onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => Dialog(
-                                      backgroundColor: Colors.transparent,
-                                      insetPadding: const EdgeInsets.all(20),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(20),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            InteractiveViewer(
-                                              child: Image.network(
-                                                "${AppConstants.uploadBaseUrl}$imagePath",
-                                                fit: BoxFit.contain,
-                                                errorBuilder: (context, error, stackTrace) => Container(
-                                                  height: 200,
-                                                  color: const Color(0xFF0F172A),
-                                                  child: const Center(
-                                                    child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Container(
-                                              width: double.infinity,
-                                              color: const Color(0xFF0F172A),
-                                              padding: const EdgeInsets.all(16),
-                                              child: Column(
-                                                children: [
-                                                  Text(
-                                                    log['plate'] ?? 'UNKNOWN',
-                                                    style: const TextStyle(
-                                                      fontFamily: 'Courier',
-                                                      color: Colors.white,
-                                                      fontSize: 20,
-                                                      fontWeight: FontWeight.bold,
-                                                      letterSpacing: 2,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    log['user'] ?? '',
-                                                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.white24),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(9),
-                                    child: Image.network(
-                                      "${AppConstants.uploadBaseUrl}$imagePath",
-                                      width: 70,
-                                      height: 46,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => Container(
-                                        width: 70,
-                                        height: 46,
-                                        color: Colors.white.withOpacity(0.05),
-                                        child: const Icon(Icons.image_not_supported, size: 16, color: Colors.white24),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-
+              _buildAlprSectionContent(),
               const SizedBox(height: 16),
-
-              // Activity Chart
-              chartAsync.when(
-                data: (chartData) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.fromLTRB(16, 20, 20, 12),
-                  decoration: AppTheme.modernCard,
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                                color: AppTheme.tealLight,
-                                borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(IconlyLight.chart,
-                                size: 16, color: AppTheme.teal),
-                          ),
-                          const SizedBox(width: 10),
-                          const Text('Tren Parkir (7 Hari)',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                  color: AppTheme.slate900)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      ParkingChart(chartData: chartData),
-                    ],
-                  ),
-                ),
-                loading: () => const Center(
-                    child: Padding(
-                        padding: EdgeInsets.all(20),
-                        child: CircularProgressIndicator())),
-                error: (e, _) => const SizedBox.shrink(),
-              ),
-
+              _buildChartSection(chartAsync),
               const SizedBox(height: 20),
             ],
           ),
         ),
-        // Emergency Override
         _buildEmergencyPanel(),
       ],
     );

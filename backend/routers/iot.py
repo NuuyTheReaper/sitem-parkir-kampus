@@ -692,6 +692,35 @@ async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)
     return {"action": "open_gate", "message": "Access granted"}
 
 
+@router.post("/register-tap")
+async def register_tap(rfid_uid: str, db: Session = Depends(get_db)):
+    """
+    Endpoint untuk mendaftarkan kartu RFID baru.
+    Menerima tap dari ESP8266 (Mode 4x click), mem-broadcast ke Live Monitor,
+    dan menyimpan UID kartu ke Firebase Realtime Database agar bisa dibaca oleh UI Admin.
+    """
+    # Broadcast ke WebSocket Live Monitor
+    await manager.broadcast({
+        "type": "rfid_register",
+        "rfid_uid": rfid_uid,
+        "message": f"Kartu RFID {rfid_uid} terdeteksi dan siap didaftarkan"
+    })
+    
+    # Simpan ke Firebase Realtime Database
+    if settings.FIREBASE_DB_URL:
+        url = f"{settings.FIREBASE_DB_URL.rstrip('/')}/gate/last_scanned_rfid.json"
+        params = {}
+        if settings.FIREBASE_DB_SECRET:
+            params["auth"] = settings.FIREBASE_DB_SECRET
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.put(url, params=params, json=rfid_uid, timeout=5)
+        except Exception as e:
+            logger.error(f"Error writing last scanned RFID to Firebase: {e}")
+            
+    return {"status": "success", "rfid_uid": rfid_uid}
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  ENDPOINT: Emergency Gate Override (Petugas Manual)
 # ═══════════════════════════════════════════════════════════════════

@@ -6,7 +6,7 @@
   - ESP8266 (NodeMCU v3 / D1 Mini)
   - RFID Reader MFRC522 (RC522)
   - Servo Motor (SG90 / MG996R)
-  - Push Button (Untuk pilihan mode: Masuk, Keluar, Darurat)
+  - Push Button (Untuk pilihan mode: Masuk, Keluar, Darurat, Daftar)
   - LED Masuk & LED Keluar (Sebagai indikator mode aktif)
   
   Pin Connection Guide:
@@ -60,7 +60,7 @@ MFRC522 mfrc522(PIN_SDA, PIN_RST);
 Servo gateServo;
 
 // --- Variabel State ---
-enum GateMode { MODE_MASUK, MODE_KELUAR };
+enum GateMode { MODE_MASUK, MODE_KELUAR, MODE_DAFTAR };
 GateMode currentMode = MODE_MASUK; // Default mode: Masuk
 
 // Variabel untuk Button Debounce & Click Counter
@@ -138,10 +138,17 @@ void updateLedIndicators() {
     digitalWrite(PIN_LED_MASUK, HIGH);  // LED Masuk ON
     digitalWrite(PIN_LED_KELUAR, LOW);  // LED Keluar OFF
     Serial.println("[MODE] Masuk (1x click)");
-  } else {
+  } 
+  else if (currentMode == MODE_KELUAR) {
     digitalWrite(PIN_LED_MASUK, LOW);   // LED Masuk OFF
     digitalWrite(PIN_LED_KELUAR, HIGH); // LED Keluar ON
     Serial.println("[MODE] Keluar (2x click)");
+  } 
+  else if (currentMode == MODE_DAFTAR) {
+    // Keduanya menyala stabil untuk menandakan mode pendaftaran kartu aktif
+    digitalWrite(PIN_LED_MASUK, HIGH);
+    digitalWrite(PIN_LED_KELUAR, HIGH);
+    Serial.println("[MODE] Daftar Kartu Baru (4x click)");
   }
 }
 
@@ -154,7 +161,7 @@ void openGate() {
   gateServo.write(0);  // Tutup kembali gerbang ke 0 derajat
 }
 
-// Fungsi mendeteksi input button (1x Masuk, 2x Keluar, 3x Darurat)
+// Fungsi mendeteksi input button (1x Masuk, 2x Keluar, 3x Darurat, 4x Daftar)
 void handleButtonInput() {
   int reading = digitalRead(PIN_BUTTON);
 
@@ -188,9 +195,13 @@ void handleButtonInput() {
       currentMode = MODE_KELUAR;
       updateLedIndicators();
     } 
-    else if (clickCount >= 3) {
+    else if (clickCount == 3) {
       Serial.println("[DARURAT] Gerbang Darurat Diaktifkan!");
       triggerEmergencyLocal();
+    }
+    else if (clickCount >= 4) {
+      currentMode = MODE_DAFTAR;
+      updateLedIndicators();
     }
     clickCount = 0; // Reset counter klik
   }
@@ -240,8 +251,12 @@ void handleRfidInput() {
   // Hentikan proses pembacaan kartu saat ini
   mfrc522.PICC_HaltA();
 
-  // Kirim Validasi ke Backend
-  sendValidationRequest(rfidUid);
+  // Kirim sesuai Mode Aktif
+  if (currentMode == MODE_DAFTAR) {
+    sendRegistrationRequest(rfidUid);
+  } else {
+    sendValidationRequest(rfidUid);
+  }
 }
 
 // Fungsi mengirim request validasi ganda ke API Backend
@@ -299,6 +314,59 @@ void sendValidationRequest(String uid) {
   } else {
     Serial.print("[HTTP] Error sending POST: ");
     Serial.println(httpResponseCode);
+  }
+  
+  http.end();
+}
+
+// Fungsi mengirim request pendaftaran kartu baru ke API Backend
+void sendRegistrationRequest(String uid) {
+  WiFiClient client;
+  HTTPClient http;
+  
+  // Ubah URL endpoint pendaftaran: /api/gate/register-tap?rfid_uid=HEX_UID
+  String regUrl = backendUrl;
+  regUrl.replace("/capture-validate", "/register-tap?rfid_uid=" + uid);
+  
+  Serial.print("[HTTP] Mengirim pendaftaran kartu ke: ");
+  Serial.println(regUrl);
+  
+  http.begin(client, regUrl);
+  int httpResponseCode = http.POST(""); // Kirim POST kosong karena UID ada di parameter URL
+
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.print("[HTTP] Response code: ");
+    Serial.println(httpResponseCode);
+    Serial.println("[HTTP] Response body: " + response);
+
+    // Sukses: Berikan feedback LED kedip cepat bersamaan 3x
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(PIN_LED_MASUK, LOW);
+      digitalWrite(PIN_LED_KELUAR, LOW);
+      delay(100);
+      digitalWrite(PIN_LED_MASUK, HIGH);
+      digitalWrite(PIN_LED_KELUAR, HIGH);
+      delay(100);
+    }
+    
+    // Kembalikan mode ke default (MASUK) setelah pendaftaran berhasil
+    currentMode = MODE_MASUK;
+    updateLedIndicators();
+  } else {
+    Serial.print("[HTTP] Error sending POST: ");
+    Serial.println(httpResponseCode);
+
+    // Gagal: Kedip LED bergantian
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(PIN_LED_MASUK, HIGH);
+      digitalWrite(PIN_LED_KELUAR, LOW);
+      delay(150);
+      digitalWrite(PIN_LED_MASUK, LOW);
+      digitalWrite(PIN_LED_KELUAR, HIGH);
+      delay(150);
+    }
+    updateLedIndicators();
   }
   
   http.end();

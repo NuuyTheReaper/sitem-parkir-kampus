@@ -80,13 +80,6 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-@app.get("/")
-def read_root():
-    return {
-        "status": "success",
-        "message": "Welcome to Smart Campus Parking System API"
-    }
-
 @app.get("/health/db")
 def read_db_health():
     try:
@@ -108,3 +101,17 @@ app.include_router(admin.router)
 app.include_router(mahasiswa.router)
 app.include_router(petugas.router)
 app.include_router(iot.router)
+
+# Serve Flutter Web build if it exists (placed at the end as fallback)
+web_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "build", "web")
+if os.path.exists(web_dir):
+    print(f"[Web] Serving Flutter Web frontend from {web_dir}")
+    app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+else:
+    print("[Web] Web build directory not found, mounting default root response")
+    @app.get("/")
+    def read_root():
+        return {
+            "status": "success",
+            "message": "Welcome to Smart Campus Parking System API (Frontend web build not found)"
+        }

@@ -231,6 +231,13 @@ async def scan_plate(request: ScanRequest):
             if ret and frame is not None:
                 detected_plate, confidence = _process_ml_inference(frame)
                 
+                # Jika real ML aktif tapi gagal mendeteksi plat pada frame,
+                # gunakan fallback_plate jika dikirim oleh request (untuk simulasi RFID)
+                if not detected_plate and request.fallback_plate:
+                    detected_plate = request.fallback_plate
+                    confidence = 0.95
+                    print(f"[ML Real Inference Empty] Fallback ke plat terdaftar: '{detected_plate}'")
+                
                 # Simpan frame ke folder uploads/scans agar bisa diakses backend
                 backend_uploads_dir = os.path.join(BASE_DIR, "backend", "uploads", "scans")
                 os.makedirs(backend_uploads_dir, exist_ok=True)

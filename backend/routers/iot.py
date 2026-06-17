@@ -793,15 +793,16 @@ def get_emergency_guests(db: Session = Depends(get_db), current_user: models.Use
     ]
 
 
-@router.get("/scan-emergency-plate")
+@router.post("/scan-emergency-plate")
 async def scan_emergency_plate(
-    gate_type: str,
-    camera_url: str = None,
+    gate_type: str = Form(...),
+    camera_url: str = Form(None),
+    file: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_petugas)
 ):
     """
-    Triggers an ANPR scan on the camera for the emergency gate,
+    Triggers an ANPR scan on the camera or processes an uploaded photo for the emergency gate,
     and returns the scanned plate and the previous name associated with that plate.
     """
     if gate_type not in ["masuk", "keluar"]:
@@ -810,15 +811,31 @@ async def scan_emergency_plate(
     gate_id = f"GATE_{gate_type.upper()}_EMERGENCY"
     detected_plate = ""
 
-    try:
-        scan = await _request_anpr_scan(
-            gate_id=gate_id,
-            camera_url=camera_url,
-        )
-        detected_plate = scan.detected_plate or ""
-    except Exception as e:
-        logger.error(f"Error scanning emergency plate: {e}")
-        detected_plate = ""
+    if file is not None:
+        try:
+            content = await file.read()
+            # Send file to ML Service via POST multipart file to /api/predict-image
+            ml_url = f"{settings.ANPR_SERVICE_URL.rstrip('/')}/api/predict-image"
+            async with httpx.AsyncClient(timeout=settings.ANPR_SCAN_TIMEOUT_SECONDS) as client:
+                files = {"file": (file.filename, content, file.content_type or "image/jpeg")}
+                data = {"gate_id": gate_id}
+                response = await client.post(ml_url, files=files, data=data)
+                response.raise_for_status()
+                ml_result = response.json()
+                detected_plate = ml_result.get("detected_plate", "")
+        except Exception as e:
+            logger.error(f"Error scanning emergency plate from uploaded file: {e}")
+            detected_plate = ""
+    else:
+        try:
+            scan = await _request_anpr_scan(
+                gate_id=gate_id,
+                camera_url=camera_url,
+            )
+            detected_plate = scan.detected_plate or ""
+        except Exception as e:
+            logger.error(f"Error scanning emergency plate: {e}")
+            detected_plate = ""
 
     previous_name = ""
     if detected_plate:

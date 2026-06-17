@@ -1553,7 +1553,6 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
         }
       }
     }
-
     Future<void> doScan(StateSetter setStateDialog, BuildContext dialogCtx) async {
       if (!dialogCtx.mounted) return;
       setStateDialog(() {
@@ -1561,17 +1560,45 @@ class _LiveMonitorTabState extends ConsumerState<LiveMonitorTab> {
         scanStatus = "Memindai plat nomor...";
       });
       try {
-        final queryParams = {
-          'gate_type': gate,
-        };
-        if (_cameraUrl != null && _cameraUrl!.isNotEmpty) {
-          queryParams['camera_url'] = _cameraUrl!;
+        Response response;
+        if (_cameraType == 'device_camera') {
+          // Capture image bytes from the browser webcam (regular scan device camera)
+          final bytes = await _cameraController.capture();
+          if (bytes == null) {
+            setStateDialog(() {
+              isScanning = false;
+              scanStatus = "Gagal mengambil gambar dari webcam. Pastikan kamera aktif.";
+            });
+            return;
+          }
+
+          final formData = FormData.fromMap({
+            'gate_type': gate,
+            'file': MultipartFile.fromBytes(
+              bytes,
+              filename: 'emergency_capture.jpg',
+              contentType: MediaType('image', 'jpeg'),
+            ),
+          });
+
+          response = await ref.read(dioProvider).post(
+            'gate/scan-emergency-plate',
+            data: formData,
+          );
+        } else {
+          // Trigger scan using backend camera stream
+          final formData = FormData.fromMap({
+            'gate_type': gate,
+            if (_cameraUrl != null && _cameraUrl!.isNotEmpty)
+              'camera_url': _cameraUrl!,
+          });
+
+          response = await ref.read(dioProvider).post(
+            'gate/scan-emergency-plate',
+            data: formData,
+          );
         }
 
-        final response = await ref.read(dioProvider).get(
-          'gate/scan-emergency-plate',
-          queryParameters: queryParams,
-        );
         final data = response.data;
         if (!dialogCtx.mounted) return;
         if (data['status'] == 'success') {

@@ -44,8 +44,8 @@ const char* ssid = "Faris Maulana";          // Ganti dengan nama Wi-Fi Anda
 const char* password = "Adiwerna2345";  // Ganti dengan password Wi-Fi Anda
 
 // --- Konfigurasi Backend & Firebase ---
-// Gunakan IP Address lokal komputer Anda (misal: 192.168.1.x atau 192.168.18.x), bukan "localhost" / "127.0.0.1"
-const String backendUrl = "http://192.168.18.83:8000/api/gate/capture-validate";
+// Gunakan IP Address lokal atau domain hosted
+const String backendUrl = "https://parkirkampus.my.id/api/gate/capture-validate";
 const String firebaseHost = "parking-system-2546df-default-rtdb.firebaseio.com";
 const String firebaseSecret = "lwFhrCtxQwicVlNIuitXN98Dup4ESSdYSXKSKMdn";
 
@@ -295,11 +295,17 @@ void handleRfidInput() {
 
 // Fungsi mengirim request validasi ganda ke API Backend
 void sendValidationRequest(String uid) {
-  WiFiClient client;
+  WiFiClient clientPlain;
+  WiFiClientSecure clientSecure;
   HTTPClient http;
   
   Serial.println("[HTTP] Mengirim data ke backend...");
-  http.begin(client, backendUrl);
+  if (backendUrl.startsWith("https://")) {
+    clientSecure.setInsecure();
+    http.begin(clientSecure, backendUrl);
+  } else {
+    http.begin(clientPlain, backendUrl);
+  }
   http.setTimeout(30000); // Set timeout ke 30 detik karena proses ANPR & OCR di backend butuh waktu
   http.addHeader("Content-Type", "application/json");
 
@@ -369,7 +375,8 @@ void sendValidationRequest(String uid) {
 
 // Fungsi mengirim request pendaftaran kartu baru ke API Backend
 void sendRegistrationRequest(String uid) {
-  WiFiClient client;
+  WiFiClient clientPlain;
+  WiFiClientSecure clientSecure;
   HTTPClient http;
   
   // Ubah URL endpoint pendaftaran: /api/gate/register-tap?rfid_uid=HEX_UID
@@ -379,7 +386,12 @@ void sendRegistrationRequest(String uid) {
   Serial.print("[HTTP] Mengirim pendaftaran kartu ke: ");
   Serial.println(regUrl);
   
-  http.begin(client, regUrl);
+  if (regUrl.startsWith("https://")) {
+    clientSecure.setInsecure();
+    http.begin(clientSecure, regUrl);
+  } else {
+    http.begin(clientPlain, regUrl);
+  }
   http.setTimeout(10000); // Set timeout ke 10 detik
   int httpResponseCode = http.POST(""); // Kirim POST kosong karena UID ada di parameter URL
 

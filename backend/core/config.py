@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Smart Campus Parking System"
     # Password dihapus, tersisa root:
-    DATABASE_URL: str = "mysql+pymysql://root:@localhost:3306/smart_parking_db"
+    DATABASE_URL: str = "mysql+pymysql://root:@127.0.0.1:3306/smart_parking_db"
     
     # Secret keys for JWT
     SECRET_KEY: str = "super_secret_jwt_key_here"  # In production, use env variables

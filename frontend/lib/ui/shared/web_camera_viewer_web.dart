@@ -33,12 +33,39 @@ class _WebCameraViewerImplState extends State<WebCameraViewerImpl> {
 
     widget.controller.captureFn = _captureFrame;
 
-    html.window.navigator.mediaDevices?.getUserMedia({'video': true}).then((stream) {
-      if (mounted) {
-        setState(() {
-          _videoElement?.srcObject = stream;
+    html.window.navigator.mediaDevices?.getUserMedia({'video': true}).then((initialStream) {
+      initialStream.getTracks().forEach((track) => track.stop());
+      
+      html.window.navigator.mediaDevices?.enumerateDevices().then((devices) {
+        final videoDevices = devices.where((d) => d.kind == 'videoinput').toList();
+        if (videoDevices.isEmpty) return;
+        
+        var selectedDevice = videoDevices.first;
+        for (var device in videoDevices) {
+          final label = (device.label ?? '').toLowerCase();
+          if (label.contains('usb') || label.contains('external') || label.contains('webcam')) {
+            selectedDevice = device;
+            break;
+          }
+        }
+        if (selectedDevice == videoDevices.first && videoDevices.length > 1) {
+          selectedDevice = videoDevices.last;
+        }
+        
+        final constraints = {
+          'video': {
+            'deviceId': {'exact': selectedDevice.deviceId}
+          }
+        };
+        
+        html.window.navigator.mediaDevices?.getUserMedia(constraints).then((stream) {
+          if (mounted) {
+            setState(() {
+              _videoElement?.srcObject = stream;
+            });
+          }
         });
-      }
+      });
     }).catchError((err) {
       if (mounted) {
         setState(() {

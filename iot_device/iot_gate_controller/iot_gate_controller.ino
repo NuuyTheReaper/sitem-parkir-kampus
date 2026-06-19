@@ -19,14 +19,14 @@
     * 3V3  -> 3.3V
     * GND  -> GND
   - Servo Motor:
-    * Signal -> D2 (GPIO 4)
+    * Signal -> D4 (GPIO 2)
     * VCC    -> 5V (Vin pada NodeMCU jika menggunakan USB 5V)
     * GND    -> GND
   - Push Button:
-    * Pin    -> D1 (GPIO 5) (Dihubungkan ke GND saat ditekan)
+    * Pin    -> Dipostpone (Disimulasikan via Serial Input)
   - LED Indikator:
     * LED Masuk  -> D0 (GPIO 16)
-    * LED Keluar -> D4 (GPIO 2 - Onboard LED NodeMCU)
+    * LED Keluar -> D1 (GPIO 5) (Dipindahkan dari D4 karena D4 untuk Servo)
   ====================================================================
 */
 
@@ -39,21 +39,23 @@
 #include <ArduinoJson.h> // Pastikan library ArduinoJson terinstall di Arduino IDE
 
 // --- Konfigurasi Wi-Fi ---
-const char* ssid = "NAMA_WIFI_ANDA";
-const char* password = "PASSWORD_WIFI_ANDA";
+// Hubungkan ESP8266 ke Wi-Fi yang sama dengan PC/Laptop Anda untuk uji coba lokal.
+const char* ssid = "Faris Maulana";          // Ganti dengan nama Wi-Fi Anda
+const char* password = "Adiwerna2345";  // Ganti dengan password Wi-Fi Anda
 
 // --- Konfigurasi Backend & Firebase ---
-const String backendUrl = "http://ALAMAT_BACKEND_HOSTING_ANDA/api/gate/capture-validate";
+// Gunakan IP Address lokal komputer Anda (misal: 192.168.1.x atau 192.168.18.x), bukan "localhost" / "127.0.0.1"
+const String backendUrl = "http://192.168.18.83:8000/api/gate/capture-validate";
 const String firebaseHost = "parking-system-2546df-default-rtdb.firebaseio.com";
 const String firebaseSecret = "lwFhrCtxQwicVlNIuitXN98Dup4ESSdYSXKSKMdn";
 
 // --- Definisikan PIN ---
 #define PIN_RST          0  // D3
 #define PIN_SDA          15 // D8
-#define PIN_SERVO        4  // D2
-#define PIN_BUTTON       5  // D1
+#define PIN_SERVO        2  // D4 (Membuka gerbang pada pin D4)
+#define PIN_BUTTON       5  // D1 (Dipostpone, input button disimulasikan via Serial)
 #define PIN_LED_MASUK    16 // D0
-#define PIN_LED_KELUAR   2  // D4 (Onboard LED)
+#define PIN_LED_KELUAR   5  // D1 (Dipindahkan dari D4 karena D4 digunakan untuk Servo)
 
 // --- Inisialisasi Objek ---
 MFRC522 mfrc522(PIN_SDA, PIN_RST);
@@ -82,12 +84,22 @@ void setup() {
   gateServo.write(0); // Posisi gerbang tertutup (0 derajat)
 
   // Setup Pin Mode
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_LED_MASUK, OUTPUT);
   pinMode(PIN_LED_KELUAR, OUTPUT);
 
   // Inisialisasi Indikator Awal (Mode Masuk Aktif)
   updateLedIndicators();
+
+  Serial.println("\n--- Sistem Siap ---");
+  Serial.println("Silakan tempelkan kartu (misal: KTM) ke modul reader...");
+  Serial.println("\n--- Panduan Simulasi Button via Serial Monitor ---");
+  Serial.println(" Kirim karakter berikut ke Serial Monitor (baudrate 115200):");
+  Serial.println(" 'c' : Simulasikan klik tombol (ketik 'c' beberapa kali untuk multi-click)");
+  Serial.println(" '1' : Ganti ke Mode Masuk");
+  Serial.println(" '2' : Ganti ke Mode Keluar");
+  Serial.println(" '3' : Aktifkan Mode Darurat (Buka Gerbang)");
+  Serial.println(" '4' : Ganti ke Mode Daftar Kartu Baru");
+  Serial.println("--------------------------------------------------");
 
   // Koneksi Wi-Fi
   connectToWiFi();
@@ -99,12 +111,7 @@ void loop() {
     connectToWiFi();
   }
 
-  // 1. Cek Trigger Servo dari Firebase (Setiap 2 Detik sekali)
-  static unsigned long lastFirebaseCheck = 0;
-  if (millis() - lastFirebaseCheck > 2000) {
-    checkFirebaseTrigger();
-    lastFirebaseCheck = millis();
-  }
+
 
   // 2. Baca Input Button (Multi-click detection)
   handleButtonInput();
@@ -163,27 +170,54 @@ void openGate() {
 
 // Fungsi mendeteksi input button (1x Masuk, 2x Keluar, 3x Darurat, 4x Daftar)
 void handleButtonInput() {
-  int reading = digitalRead(PIN_BUTTON);
+  // Simulasikan button menggunakan Serial input
+  if (Serial.available() > 0) {
+    char c = Serial.read();
+    
+    // Abaikan newline / carriage return
+    if (c != '\n' && c != '\r') {
+      Serial.print("[SERIAL INPUT] Karakter diterima: '");
+      Serial.print(c);
+      Serial.println("'");
 
-  // Debouncing
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading != buttonState) {
-      buttonState = reading;
-
-      // Jika tombol ditekan (transisi HIGH ke LOW)
-      if (buttonState == LOW) {
+      if (c == 'c' || c == 'C') {
+        // Simulasikan satu klik tombol
         clickCount++;
         lastClickTime = millis();
-        Serial.print("Click ke-");
+        Serial.print("[SIMULASI] Klik ke-");
         Serial.println(clickCount);
+      }
+      else if (c == '1') {
+        // Langsung pindah ke Mode Masuk
+        currentMode = MODE_MASUK;
+        updateLedIndicators();
+      }
+      else if (c == '2') {
+        // Langsung pindah ke Mode Keluar
+        currentMode = MODE_KELUAR;
+        updateLedIndicators();
+      }
+      else if (c == '3') {
+        // Langsung picu Darurat (Buka Gerbang)
+        Serial.println("[DARURAT] Gerbang Darurat Diaktifkan via Serial!");
+        triggerEmergencyLocal();
+      }
+      else if (c == '4') {
+        // Langsung pindah ke Mode Daftar
+        currentMode = MODE_DAFTAR;
+        updateLedIndicators();
+      }
+      else {
+        Serial.println("--- Panduan Serial Command ---");
+        Serial.println(" 'c' : Simulasikan 1x klik button (bisa diketik beberapa kali dengan cepat)");
+        Serial.println(" '1' : Set MODE_MASUK");
+        Serial.println(" '2' : Set MODE_KELUAR");
+        Serial.println(" '3' : Set DARURAT (Buka Gerbang)");
+        Serial.println(" '4' : Set MODE_DAFTAR");
+        Serial.println("-----------------------------");
       }
     }
   }
-  lastButtonState = reading;
 
   // Evaluasi jumlah klik setelah melewati window waktu
   if (clickCount > 0 && (millis() - lastClickTime) > clickWindow) {
@@ -196,7 +230,7 @@ void handleButtonInput() {
       updateLedIndicators();
     } 
     else if (clickCount == 3) {
-      Serial.println("[DARURAT] Gerbang Darurat Diaktifkan!");
+      Serial.println("[DARURAT] Gerbang Darurat Diaktifkan via Multi-Click Simulasi!");
       triggerEmergencyLocal();
     }
     else if (clickCount >= 4) {
@@ -266,6 +300,7 @@ void sendValidationRequest(String uid) {
   
   Serial.println("[HTTP] Mengirim data ke backend...");
   http.begin(client, backendUrl);
+  http.setTimeout(30000); // Set timeout ke 30 detik karena proses ANPR & OCR di backend butuh waktu
   http.addHeader("Content-Type", "application/json");
 
   // Siapkan Payload JSON
@@ -292,15 +327,25 @@ void sendValidationRequest(String uid) {
       String action = respDoc["action"]; // "open_gate" atau "keep_closed"
       String message = respDoc["message"];
       String studentName = respDoc["student_name"];
+      String plateNumber = respDoc["plate_number"];
 
       Serial.print("[VALIDASI] ");
       Serial.print(studentName);
+      if (plateNumber.length() > 0) {
+        Serial.print(" (Plat: " + plateNumber + ")");
+      }
       Serial.print(" - ");
       Serial.println(message);
 
-      if (action == "open_gate") {
+      action.trim();
+      if (action.equalsIgnoreCase("open_gate")) {
+        Serial.println("[VALIDASI] Sukses! Membuka gerbang.");
         openGate();
       } else {
+        Serial.print("[VALIDASI] Gagal/Ditolak! Status gerbang tetap tertutup (action: ");
+        Serial.print(action);
+        Serial.println(")");
+        
         // Blink LED error (Deny)
         for (int i = 0; i < 3; i++) {
           digitalWrite(PIN_LED_MASUK, LOW);
@@ -310,6 +355,9 @@ void sendValidationRequest(String uid) {
           delay(200);
         }
       }
+    } else {
+      Serial.print("[JSON] Gagal mengurai JSON response: ");
+      Serial.println(error.c_str());
     }
   } else {
     Serial.print("[HTTP] Error sending POST: ");
@@ -332,6 +380,7 @@ void sendRegistrationRequest(String uid) {
   Serial.println(regUrl);
   
   http.begin(client, regUrl);
+  http.setTimeout(10000); // Set timeout ke 10 detik
   int httpResponseCode = http.POST(""); // Kirim POST kosong karena UID ada di parameter URL
 
   if (httpResponseCode > 0) {
@@ -377,6 +426,7 @@ void checkFirebaseTrigger() {
   WiFiClientSecure client;
   client.setInsecure(); // ESP8266 mengabaikan verifikasi SSL certificate
   HTTPClient http;
+  bool shouldReset = false;
 
   String url = "https://" + firebaseHost + "/gate/servo_trigger.json";
   if (firebaseSecret != "") {
@@ -396,11 +446,16 @@ void checkFirebaseTrigger() {
       // Buka Gerbang
       openGate();
 
-      // Reset Trigger ke 0 di Firebase agar tidak terbuka berulang kali
-      resetFirebaseTrigger();
+      // Tandai bahwa trigger perlu di-reset
+      shouldReset = true;
     }
   }
-  http.end();
+  http.end(); // Tutup koneksi HTTPS pertama terlebih dahulu untuk menghemat memori (RAM)
+
+  // Jalankan reset jika diperlukan setelah koneksi sebelumnya ditutup
+  if (shouldReset) {
+    resetFirebaseTrigger();
+  }
 }
 
 // Fungsi meriset trigger gerbang kembali ke 0 di Firebase

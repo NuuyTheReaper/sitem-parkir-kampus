@@ -28,6 +28,8 @@ import requests
 import uvicorn
 import re
 from huggingface_hub import hf_hub_download
+import threading
+from fastapi.responses import StreamingResponse
 
 # ═══════════════════════════════════════════
 #  KONFIGURASI & STRATEGI FALLBACK
@@ -173,10 +175,104 @@ except ImportError:
     print("[ML Service] ⚠️ ML dependencies not installed. Running in SIMULATOR mode.")
 
 # ═══════════════════════════════════════════
-#  ML SERVICE (FastAPI)
+#  CAMERA STREAMER & FASTAPI SETUP
 # ═══════════════════════════════════════════
 
+CAMERA_SOURCE = os.getenv("CAMERA_URL") or "1" # Default ke 1 untuk webcam eksternal, ganti ke 0 jika memakai webcam internal
+camera_streamer = None
+
+class CameraStreamer:
+    def __init__(self, source):
+        self.source = source
+        self.cap = None
+        self.frame = None
+        self.ret = False
+        self.running = False
+        self.lock = threading.Lock()
+        self.thread = None
+
+    def start(self):
+        if self.running:
+            return
+        self.running = True
+        self.thread = threading.Thread(target=self._update, daemon=True)
+        self.thread.start()
+
+    def _update(self):
+        print(f"[CameraStreamer] Starting background camera stream from: {self.source}")
+        source_val = int(self.source) if isinstance(self.source, str) and self.source.isdigit() else self.source
+        self.cap = cv2.VideoCapture(source_val)
+        
+        while self.running:
+            ret, frame = self.cap.read()
+            with self.lock:
+                self.ret = ret
+                if ret:
+                    self.frame = frame.copy()
+                else:
+                    self.frame = None
+            if not ret:
+                print(f"[CameraStreamer] Connection failed or lost for source: {self.source}. Retrying in 2s...")
+                time.sleep(2)
+                self.cap.release()
+                self.cap = cv2.VideoCapture(source_val)
+            time.sleep(0.03) # ~30 FPS
+
+    def get_frame(self):
+        with self.lock:
+            return self.ret, self.frame
+
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join()
+        if self.cap:
+            self.cap.release()
+
 app = FastAPI(title="ML Plate Detection Service", version="1.0.0")
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("startup")
+def startup_event():
+    global camera_streamer
+    camera_streamer = CameraStreamer(CAMERA_SOURCE)
+    camera_streamer.start()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    global camera_streamer
+    if camera_streamer:
+        camera_streamer.stop()
+
+@app.get("/api/stream")
+def stream_camera():
+    """
+    Endpoint untuk streaming MJPEG dari webcam eksternal (CameraStreamer) secara realtime ke browser/dashboard.
+    """
+    def generate_frames():
+        while True:
+            ret, frame = camera_streamer.get_frame()
+            if not ret or frame is None:
+                time.sleep(0.1)
+                continue
+            ret, buffer = cv2.imencode('.jpg', frame)
+            if not ret:
+                continue
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            time.sleep(0.05) # Batasi FPS ke ~20
+            
+    return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 class ScanRequest(BaseModel):
     gate_id: str
@@ -197,34 +293,24 @@ async def scan_plate(request: ScanRequest):
     """
     Endpoint untuk mendeteksi plat dari RTSP / HTTP / Webcam stream kamera atau file gambar lokal.
     """
-    camera_url = request.camera_url or os.getenv("CAMERA_URL") or "http://192.168.1.7:8080/video"
-    
-    if isinstance(camera_url, str) and (camera_url.isdigit() or camera_url == "device_camera"):
-        video_source = int(camera_url) if camera_url.isdigit() else 0
-    else:
-        video_source = camera_url
-
     frame = None
     ret = False
 
     if USE_REAL_ML:
         try:
-            # 1. Cek apakah video_source adalah path ke file gambar lokal yang ada di disk
-            if isinstance(video_source, str) and os.path.isfile(video_source):
-                print(f"[ML Service] Membaca file gambar lokal: {video_source}")
-                frame = cv2.imread(video_source)
+            # 1. Cek apakah request.camera_url adalah path ke file gambar lokal yang ada di disk
+            if isinstance(request.camera_url, str) and os.path.isfile(request.camera_url):
+                print(f"[ML Service] Membaca file gambar lokal: {request.camera_url}")
+                frame = cv2.imread(request.camera_url)
                 ret = frame is not None
             else:
-                # 2. Mencoba membuka stream video/RTSP
-                print(f"[ML Service] Membuka kamera/stream dari: {video_source}")
-                cap = cv2.VideoCapture(video_source)
-                ret, frame = cap.read()
-                cap.release()
-                
-                # 3. Fallback ke webcam lokal (0) jika RTSP gagal
-                if not ret:
-                    print(f"[ML Service] Stream gagal. Mencoba mengakses webcam lokal (0)...")
-                    cap = cv2.VideoCapture(0)
+                # 2. Ambil dari background streamer (Webcam Eksternal) yang sedang berjalan
+                ret, frame = camera_streamer.get_frame()
+                if not ret or frame is None:
+                    # Fallback jika streamer background kosong, coba baca langsung sekali
+                    print("[ML Service] Streamer background kosong. Mencoba membaca langsung...")
+                    source_val = int(CAMERA_SOURCE) if CAMERA_SOURCE.isdigit() else CAMERA_SOURCE
+                    cap = cv2.VideoCapture(source_val)
                     ret, frame = cap.read()
                     cap.release()
             

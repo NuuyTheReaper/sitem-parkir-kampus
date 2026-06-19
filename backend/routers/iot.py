@@ -234,13 +234,8 @@ async def capture_and_validate_gate(
     if request.gate_type not in ["masuk", "keluar"]:
         raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
 
-    # Dapatkan fallback plate dari database jika kamera fisik gagal (untuk local simulation)
+    # Dapatkan fallback plate dinonaktifkan agar sistem selalu melakukan pemindaian plat riil via kamera/webcam
     fallback_plate = None
-    user = db.query(models.User).filter(models.User.rfid_uid == request.rfid_uid).first()
-    if user and user.vehicles:
-        approved = [v for v in user.vehicles if v.status_validasi == models.ValidationStatusEnum.disetujui]
-        if approved:
-            fallback_plate = approved[0].plat_nomor
 
     try:
         scan = await _request_anpr_scan(

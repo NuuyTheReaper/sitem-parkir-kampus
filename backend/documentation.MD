@@ -1631,3 +1631,70 @@ FIREBASE_DB_SECRET="credential_secret_key"
    - Dipanggil oleh petugas untuk membuka gerbang secara paksa (emergency).
 
 Kedua endpoint di atas secara internal memanggil helper `trigger_physical_servo()` yang mengirimkan HTTP PUT request ke Firebase pada path `/gate/servo_trigger.json` dengan body `1`.
+
+## Integrasi Layanan ML (ANPR) & Streaming Kamera
+
+Untuk mendukung pemindaian plat nomor kendaraan secara otomatis dan realtime pada saat kartu RFID ditempelkan, sistem menggunakan **Layanan ML (ANPR) mandiri** yang terpisah dari Backend utama.
+
+### Alur Kerja Deteksi & Streaming Kamera
+
+1. **Camera Streaming**:
+   - Layanan ML membuka webcam eksternal (default indeks `1`) menggunakan `CameraStreamer` di background thread secara terus-menerus.
+   - Layanan ML memaparkan endpoint `/api/stream` untuk menghasilkan video stream MJPEG realtime.
+   - Dashboard Petugas di web browser menampilkan live camera dengan menunjuk langsung ke URL lokal `http://127.0.0.1:8765/api/stream` (tanpa membebani bandwidth VPS).
+
+2. **Dual Validation**:
+   - ESP8266 menempelkan kartu -> mengirim request `/api/gate/capture-validate` ke Backend VPS.
+   - Backend VPS memanggil `/api/scan-plate` pada Layanan ML.
+   - Layanan ML mengambil frame terbaru dari `CameraStreamer` di memori, mendeteksi plat nomor via YOLOv8 & EasyOCR, menyimpan foto hasil tangkapan, dan mengembalikan teks plat yang terdeteksi ke Backend VPS.
+   - Backend VPS mencocokkan hasil deteksi dengan data kendaraan terdaftar pada user pemilik RFID di database.
+
+### Spesifikasi API Layanan ML (Port 8765)
+
+#### GET `/api/stream`
+Mendapatkan streaming video realtime dalam format MJPEG.
+- **Response**: `StreamingResponse` (`multipart/x-mixed-replace; boundary=frame`)
+
+#### POST `/api/scan-plate`
+Melakukan pemindaian plat nomor dari frame kamera terakhir.
+- **Request Body**:
+  ```json
+  {
+    "gate_id": "GATE_DEFAULT",
+    "camera_url": null,
+    "fallback_plate": null
+  }
+  ```
+- **Response Body**:
+  ```json
+  {
+    "detected_plate": "G 1234 AB",
+    "confidence": 0.95,
+    "timestamp": "2026-06-19T23:10:00Z",
+    "gate_id": "GATE_DEFAULT",
+    "model_version": "yolov8n-plate-v4.0",
+    "image_path": "/uploads/scans/capture_GATE_DEFAULT_20260619_231000.jpg"
+  }
+  ```
+
+---
+
+### Panduan Konfigurasi Produksi (Production Setup)
+
+Jika backend dan frontend di-hosting di VPS (menggunakan IP publik sendiri) sedangkan kamera dan alat pembaca RFID berada di gerbang lokal kampus:
+
+1. **Jembatan Koneksi (Port Forwarding)**:
+   Karena ML Service berjalan di PC lokal gerbang, buat terowongan SSH terenkripsi dari PC lokal ke VPS Anda agar backend VPS dapat mengakses port `8765` ML Service lokal:
+   ```bash
+   ssh -N -R 8765:localhost:8765 username_vps@ip_vps_anda
+   ```
+   *Catatan*: Pastikan `ANPR_SERVICE_URL` di file `.env` backend VPS diset ke `"http://127.0.0.1:8765"`. Dengan port forwarding di atas, request akan otomatis diteruskan ke PC lokal gerbang.
+
+2. **Koneksi Live Kamera di Petugas Dashboard**:
+   Pada dashboard petugas di web browser, buka pengaturan kamera (Koneksi Kamera):
+   - **Tipe Kamera**: `IP Camera (MJPEG Stream)`
+   - **URL Stream Kamera**: `http://127.0.0.1:8765/api/stream`
+   - **Alasan**: Karena browser berjalan di PC lokal yang sama dengan kamera dicolokkan, ia dapat mengakses stream video secara langsung di `127.0.0.1` tanpa menghabiskan kuota bandwidth internet VPS.
+
+3. **Logika Dynamic HTTPS pada IoT Controller (ESP8266)**:
+   Jika backend menggunakan protokol HTTPS (`https://parkirkampus.my.id`), program pada ESP8266 secara dinamis akan mendeteksi awalan `https://` dan menggunakan `WiFiClientSecure` yang dikonfigurasi dengan bypass verifikasi SSL (`client.setInsecure()`) untuk menjamin kelancaran pengiriman data tanpa error handshaking.

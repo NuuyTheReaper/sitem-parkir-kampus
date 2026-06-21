@@ -635,6 +635,7 @@ final rfidUid = decoded['rfid_uid'] ?? '';
 final gateId = decoded['gate_id'] ?? 'GATE_DEFAULT';
 final gateType = decoded['gate_type'] ?? 'masuk';
 _autoCaptureAndUpload(rfidUid, gateId, gateType);
+return; // Skip adding trigger control message to UI activity list
 }
 
 if (mounted) {

@@ -7,7 +7,8 @@
   - RFID Reader MFRC522 (RC522)
   - Servo Motor (SG90 / MG996R)
   - Push Button (Untuk pilihan mode: Masuk, Keluar, Darurat, Daftar)
-  - LED Masuk & LED Keluar (Sebagai indikator mode aktif)
+  - LCD 16x2 I2C (Sebagai indikator visual status & informasi)
+  - Active Buzzer (Sebagai indikator audio)
   
   Pin Connection Guide:
   - MFRC522 RFID:
@@ -22,11 +23,17 @@
     * Signal -> D4 (GPIO 2)
     * VCC    -> 5V (Vin pada NodeMCU jika menggunakan USB 5V)
     * GND    -> GND
+  - LCD 16x2 I2C:
+    * SDA  -> D2 (GPIO 4)
+    * SCL  -> D1 (GPIO 5)
+    * VCC  -> 5V / 3.3V
+    * GND  -> GND
+  - Active Buzzer:
+    * Positive -> D0 (GPIO 16)
+    * Negative -> GND
   - Push Button:
-    * Pin    -> Dipostpone (Disimulasikan via Serial Input)
-  - LED Indikator:
-    * LED Masuk  -> D0 (GPIO 16)
-    * LED Keluar -> D1 (GPIO 5) (Dipindahkan dari D4 karena D4 untuk Servo)
+    * Pin      -> D9 (GPIO 3 / RX) - Catatan: Bisa disesuaikan ke pin lain jika ada bentrok Serial
+    * Pin lain -> GND
   ====================================================================
 */
 
@@ -37,6 +44,8 @@
 #include <MFRC522.h>
 #include <Servo.h>
 #include <ArduinoJson.h> // Pastikan library ArduinoJson terinstall di Arduino IDE
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
 // --- Konfigurasi Wi-Fi ---
 // Hubungkan ESP8266 ke Wi-Fi yang sama dengan PC/Laptop Anda untuk uji coba lokal.
@@ -53,13 +62,20 @@ const String firebaseSecret = "lwFhrCtxQwicVlNIuitXN98Dup4ESSdYSXKSKMdn";
 #define PIN_RST          0  // D3
 #define PIN_SDA          15 // D8
 #define PIN_SERVO        2  // D4 (Membuka gerbang pada pin D4)
-#define PIN_BUTTON       5  // D1 (Dipostpone, input button disimulasikan via Serial)
-#define PIN_LED_MASUK    16 // D0
-#define PIN_LED_KELUAR   5  // D1 (Dipindahkan dari D4 karena D4 digunakan untuk Servo)
+#define PIN_BUZZER       16 // D0 (GPIO 16) - Buzzer indikator
+#define PIN_SDA_LCD      4  // D2 (GPIO 4) - I2C SDA untuk LCD
+#define PIN_SCL_LCD      5  // D1 (GPIO 5) - I2C SCL untuk LCD
+#define PIN_BUTTON       3  // D9 (GPIO 3 / RX) - Tombol Pilihan Mode (Active-low dengan PULLUP)
+
+// --- Konfigurasi LCD I2C ---
+#define LCD_ADDR         0x27 // Alamat I2C umum (0x27 atau 0x3F)
+#define LCD_COLS         16
+#define LCD_ROWS         2
 
 // --- Inisialisasi Objek ---
 MFRC522 mfrc522(PIN_SDA, PIN_RST);
 Servo gateServo;
+LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 
 // --- Variabel State ---
 enum GateMode { MODE_MASUK, MODE_KELUAR, MODE_DAFTAR };
@@ -74,6 +90,39 @@ unsigned long lastClickTime = 0;
 const unsigned long clickWindow = 800; // Window waktu untuk deteksi multi-click (ms)
 int clickCount = 0;
 
+// --- Fungsi Indikator Buzzer ---
+void beepTap() {
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(100);
+  digitalWrite(PIN_BUZZER, LOW);
+}
+
+void beepSuccess() {
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(100);
+  digitalWrite(PIN_BUZZER, LOW);
+  delay(100);
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(100);
+  digitalWrite(PIN_BUZZER, LOW);
+}
+
+void beepFail() {
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(600);
+  digitalWrite(PIN_BUZZER, LOW);
+}
+
+void beepWiFiConnected() {
+  // Indikator bunyi 3x bip cepat saat Wi-Fi terhubung
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(PIN_BUZZER, HIGH);
+    delay(80);
+    digitalWrite(PIN_BUZZER, LOW);
+    delay(80);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   SPI.begin();
@@ -83,9 +132,25 @@ void setup() {
   gateServo.attach(PIN_SERVO);
   gateServo.write(0); // Posisi gerbang tertutup (0 derajat)
 
-  // Setup Pin Mode
-  pinMode(PIN_LED_MASUK, OUTPUT);
-  pinMode(PIN_LED_KELUAR, OUTPUT);
+  // Setup Pin Mode Buzzer
+  pinMode(PIN_BUZZER, OUTPUT);
+  digitalWrite(PIN_BUZZER, LOW);
+
+  // Setup Pin Mode Button
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
+
+  // Setup LCD I2C
+  Wire.begin(PIN_SDA_LCD, PIN_SCL_LCD);
+  lcd.init();
+  lcd.backlight();
+  
+  // Tampilkan loading screen awal
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Parking");
+  lcd.setCursor(0, 1);
+  lcd.print("System Ready...");
+  delay(1500);
 
   // Inisialisasi Indikator Awal (Mode Masuk Aktif)
   updateLedIndicators();
@@ -111,8 +176,6 @@ void loop() {
     connectToWiFi();
   }
 
-
-
   // 2. Baca Input Button (Multi-click detection)
   handleButtonInput();
 
@@ -130,31 +193,56 @@ void connectToWiFi() {
   Serial.println(ssid);
   WiFi.begin(ssid, password);
   
+  // Tampilkan status koneksi di LCD
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi");
+  lcd.setCursor(0, 1);
+  lcd.print(ssid);
+
+  int attempt = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+    lcd.setCursor(15, 0);
+    lcd.print(attempt % 2 == 0 ? "." : " ");
+    attempt++;
   }
   Serial.println("\nWi-Fi Connected!");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Connected!");
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.localIP().toString());
+  
+  // Bunyikan buzzer sebagai indikator Wi-Fi terkoneksi
+  beepWiFiConnected();
+  
+  delay(1500);
+  
+  updateLedIndicators();
 }
 
-// Fungsi Mengupdate LED Indikator berdasarkan Mode Aktif
+// Fungsi Mengupdate LCD Indikator berdasarkan Mode Aktif (sebelumnya LED Indikator)
 void updateLedIndicators() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Parking");
+  lcd.setCursor(0, 1);
+  
   if (currentMode == MODE_MASUK) {
-    digitalWrite(PIN_LED_MASUK, HIGH);  // LED Masuk ON
-    digitalWrite(PIN_LED_KELUAR, LOW);  // LED Keluar OFF
+    lcd.print("Gate: MASUK");
     Serial.println("[MODE] Masuk (1x click)");
   } 
   else if (currentMode == MODE_KELUAR) {
-    digitalWrite(PIN_LED_MASUK, LOW);   // LED Masuk OFF
-    digitalWrite(PIN_LED_KELUAR, HIGH); // LED Keluar ON
+    lcd.print("Gate: KELUAR");
     Serial.println("[MODE] Keluar (2x click)");
   } 
   else if (currentMode == MODE_DAFTAR) {
-    // Keduanya menyala stabil untuk menandakan mode pendaftaran kartu aktif
-    digitalWrite(PIN_LED_MASUK, HIGH);
-    digitalWrite(PIN_LED_KELUAR, HIGH);
+    lcd.print("Mode: DAFTAR");
     Serial.println("[MODE] Daftar Kartu Baru (4x click)");
   }
 }
@@ -170,7 +258,25 @@ void openGate() {
 
 // Fungsi mendeteksi input button (1x Masuk, 2x Keluar, 3x Darurat, 4x Daftar)
 void handleButtonInput() {
-  // Simulasikan button menggunakan Serial input
+  // 1. Baca Input Tombol Fisik dengan Debouncing
+  int reading = digitalRead(PIN_BUTTON);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == LOW) { // Tombol ditekan (Active-low)
+        clickCount++;
+        lastClickTime = millis();
+        Serial.print("[TOMBOL] Klik fisik ke-");
+        Serial.println(clickCount);
+      }
+    }
+  }
+  lastButtonState = reading;
+
+  // 2. Simulasikan button menggunakan Serial input
   if (Serial.available() > 0) {
     char c = Serial.read();
     
@@ -241,23 +347,27 @@ void handleButtonInput() {
   }
 }
 
-// Fungsi darurat: Buka servo lokal & kirim update trigger ke Firebase
+// Fungsi darurat: Buka servo lokal & nyalakan buzzer alarm
 void triggerEmergencyLocal() {
-  // Nyalakan kedua LED berkedip cepat sebagai alarm darurat
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("GERBANG DARURAT!");
+  lcd.setCursor(0, 1);
+  lcd.print("TERBUKA!");
+
+  // Alarm buzzer berbunyi cepat/intermiten
   for (int i = 0; i < 5; i++) {
-    digitalWrite(PIN_LED_MASUK, HIGH);
-    digitalWrite(PIN_LED_KELUAR, HIGH);
-    delay(100);
-    digitalWrite(PIN_LED_MASUK, LOW);
-    digitalWrite(PIN_LED_KELUAR, LOW);
-    delay(100);
+    digitalWrite(PIN_BUZZER, HIGH);
+    delay(150);
+    digitalWrite(PIN_BUZZER, LOW);
+    delay(150);
   }
   
-  // Update mode LED kembali ke normal
-  updateLedIndicators();
-
   // Buka Servo
   openGate();
+
+  // Update mode LCD kembali ke normal
+  updateLedIndicators();
 }
 
 // Fungsi mendeteksi & memproses RFID
@@ -281,6 +391,14 @@ void handleRfidInput() {
   
   Serial.print("\n[RFID] Kartu terdeteksi: ");
   Serial.println(rfidUid);
+
+  // Indikator audio & visual saat tap rfid
+  beepTap();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Kartu Terbaca");
+  lcd.setCursor(0, 1);
+  lcd.print("Memproses...");
 
   // Hentikan proses pembacaan kartu saat ini
   mfrc522.PICC_HaltA();
@@ -346,28 +464,78 @@ void sendValidationRequest(String uid) {
       action.trim();
       if (action.equalsIgnoreCase("open_gate")) {
         Serial.println("[VALIDASI] Sukses! Membuka gerbang.");
+        
+        // Indikator visual & audio sukses masuk/keluar
+        beepSuccess();
+        lcd.clear();
+        if (currentMode == MODE_MASUK) {
+          lcd.setCursor(0, 0);
+          lcd.print("Silakan Masuk");
+        } else {
+          lcd.setCursor(0, 0);
+          lcd.print("Silakan Keluar");
+        }
+        
+        // Tampilkan nama mahasiswa (maksimal 16 karakter)
+        lcd.setCursor(0, 1);
+        if (studentName.length() > 0) {
+          lcd.print(studentName.substring(0, 16));
+        } else if (plateNumber.length() > 0) {
+          lcd.print(plateNumber.substring(0, 16));
+        } else {
+          lcd.print("Gate Terbuka");
+        }
+
+        // Jalankan perintah buka gate
         openGate();
+        updateLedIndicators(); // Kembalikan ke tampilan standby/idle
       } else {
         Serial.print("[VALIDASI] Gagal/Ditolak! Status gerbang tetap tertutup (action: ");
         Serial.print(action);
         Serial.println(")");
         
-        // Blink LED error (Deny)
-        for (int i = 0; i < 3; i++) {
-          digitalWrite(PIN_LED_MASUK, LOW);
-          digitalWrite(PIN_LED_KELUAR, LOW);
-          delay(200);
-          updateLedIndicators();
-          delay(200);
+        // Indikator visual & audio gagal
+        beepFail();
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Akses Ditolak!");
+        lcd.setCursor(0, 1);
+        if (message.length() > 0) {
+          lcd.print(message.substring(0, 16));
+        } else {
+          lcd.print("Kartu/Plat Salah");
         }
+        
+        delay(2500); // Tahan pesan penolakan selama 2.5 detik
+        updateLedIndicators(); // Kembalikan ke tampilan standby/idle
       }
     } else {
       Serial.print("[JSON] Gagal mengurai JSON response: ");
       Serial.println(error.c_str());
+      
+      // Indikator error parser
+      beepFail();
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Error Parser!");
+      lcd.setCursor(0, 1);
+      lcd.print("Coba Lagi");
+      delay(2000);
+      updateLedIndicators();
     }
   } else {
     Serial.print("[HTTP] Error sending POST: ");
     Serial.println(httpResponseCode);
+    
+    // Indikator error koneksi
+    beepFail();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Error Koneksi!");
+    lcd.setCursor(0, 1);
+    lcd.print("HTTP: " + String(httpResponseCode));
+    delay(2500);
+    updateLedIndicators();
   }
   
   http.end();
@@ -401,15 +569,14 @@ void sendRegistrationRequest(String uid) {
     Serial.println(httpResponseCode);
     Serial.println("[HTTP] Response body: " + response);
 
-    // Sukses: Berikan feedback LED kedip cepat bersamaan 3x
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(PIN_LED_MASUK, LOW);
-      digitalWrite(PIN_LED_KELUAR, LOW);
-      delay(100);
-      digitalWrite(PIN_LED_MASUK, HIGH);
-      digitalWrite(PIN_LED_KELUAR, HIGH);
-      delay(100);
-    }
+    // Sukses: Bunyi beep sukses & tampilkan pesan sukses
+    beepSuccess();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Daftar Sukses!");
+    lcd.setCursor(0, 1);
+    lcd.print("Kembali ke MASUK");
+    delay(2500);
     
     // Kembalikan mode ke default (MASUK) setelah pendaftaran berhasil
     currentMode = MODE_MASUK;
@@ -418,15 +585,15 @@ void sendRegistrationRequest(String uid) {
     Serial.print("[HTTP] Error sending POST: ");
     Serial.println(httpResponseCode);
 
-    // Gagal: Kedip LED bergantian
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(PIN_LED_MASUK, HIGH);
-      digitalWrite(PIN_LED_KELUAR, LOW);
-      delay(150);
-      digitalWrite(PIN_LED_MASUK, LOW);
-      digitalWrite(PIN_LED_KELUAR, HIGH);
-      delay(150);
-    }
+    // Gagal: Beep gagal & tampilkan pesan gagal
+    beepFail();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Daftar Gagal!");
+    lcd.setCursor(0, 1);
+    lcd.print("Coba Lagi");
+    delay(2500);
+    
     updateLedIndicators();
   }
   

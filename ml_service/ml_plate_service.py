@@ -354,10 +354,9 @@ async def scan_plate(request: ScanRequest):
         confidence = 0.95
         print(f"[ML Simulator Cerdas] Kamera gagal. Menggunakan plat terdaftar dari kartu RFID: '{detected_plate}' (conf: {confidence})")
     else:
-        detection = random.choice(SIMULATED_PLATES)
-        detected_plate = detection["plate"]
-        confidence = detection["confidence"]
-        print(f"[ML Simulator Fallback] Kamera gagal & no fallback. Menggunakan plat acak: '{detected_plate}' (conf: {confidence:.2f})")
+        detected_plate = ""
+        confidence = 0.0
+        print(f"[ML Simulator Fallback] Kamera gagal & no fallback. Mengembalikan plat kosong")
         
     return ScanResponse(
         detected_plate=detected_plate,
@@ -395,11 +394,10 @@ async def predict_image(
             print(f"[ML Error] Gagal menjalankan inference gambar: {e}")
 
     # Fallback ke simulator
-    detection = random.choice(SIMULATED_PLATES)
-    print(f"[ML Simulator] Prediksi Gambar: {detection['plate']} (conf: {detection['confidence']:.2f})")
+    print(f"[ML Simulator] Prediksi Gambar: Mengembalikan plat kosong")
     return ScanResponse(
-        detected_plate=detection["plate"],
-        confidence=detection["confidence"],
+        detected_plate="",
+        confidence=0.0,
         timestamp=datetime.now(timezone.utc).isoformat(),
         gate_id=gate_id,
     )

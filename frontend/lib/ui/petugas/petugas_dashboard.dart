@@ -1202,45 +1202,100 @@ rfidCtrl.dispose();
 }
 }
 
-Future<void> _autoCaptureAndUpload(String rfidUid, String gateId, String gateType) async {
-// Hanya memotret jika kamera aktif dan menggunakan tipe device_camera (webcam)
-if (!_showCamera || _cameraType != 'device_camera' || _cameraController == null) {
-debugPrint('[AutoCapture] Kamera tidak aktif atau bukan device_camera');
-return;
-}
+    Future<void> _autoCaptureAndUpload(String rfidUid, String gateId, String gateType) async {
+      // Tampilkan notifikasi awal di UI bahwa RFID terdeteksi
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Text('RFID Terdeteksi ($rfidUid). Memotret webcam...'),
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
 
-try {
-debugPrint('[AutoCapture] Menangkap frame webcam secara otomatis untuk RFID $rfidUid...');
-final bytes = await _cameraController!.capture();
-if (bytes == null) {
-debugPrint('[AutoCapture] Gagal mendapatkan bytes gambar');
-return;
-}
-
-final dio = ref.read(dioProvider);
-final mimeSubtype = 'jpeg';
-
-final formData = FormData.fromMap({
-'rfid_uid': rfidUid,
-'gate_id': gateId,
-'gate_type': gateType,
-'file': MultipartFile.fromBytes(
-bytes,
-filename: 'webcam_auto_capture.jpg',
-contentType: MediaType('image', mimeSubtype),
-),
-});
-
-debugPrint('[AutoCapture] Mengunggah frame hasil tangkapan webcam...');
-await dio.post(
-'gate/upload-capture-response',
-data: formData,
-);
-debugPrint('[AutoCapture] Unggah selesai untuk RFID $rfidUid');
-} catch (e) {
-debugPrint('[AutoCapture] Gagal memotret/mengunggah secara otomatis: $e');
-}
-}
+      // Hanya memotret jika kamera aktif dan menggunakan tipe device_camera (webcam)
+      if (!_showCamera || _cameraType != 'device_camera' || _cameraController == null) {
+        debugPrint('[AutoCapture] Kamera tidak aktif atau bukan device_camera');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Auto-Capture Gagal: Webcam tidak aktif/belum terhubung!'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+      
+      try {
+        debugPrint('[AutoCapture] Menangkap frame webcam secara otomatis untuk RFID $rfidUid...');
+        final bytes = await _cameraController!.capture();
+        if (bytes == null) {
+          debugPrint('[AutoCapture] Gagal mendapatkan bytes gambar');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Auto-Capture Gagal: Tidak dapat menangkap gambar webcam.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        
+        final dio = ref.read(dioProvider);
+        final mimeSubtype = 'jpeg';
+        
+        final formData = FormData.fromMap({
+          'rfid_uid': rfidUid,
+          'gate_id': gateId,
+          'gate_type': gateType,
+          'file': MultipartFile.fromBytes(
+            bytes,
+            filename: 'webcam_auto_capture.jpg',
+            contentType: MediaType('image', mimeSubtype),
+          ),
+        });
+        
+        debugPrint('[AutoCapture] Mengunggah frame hasil tangkapan webcam...');
+        await dio.post(
+          'gate/upload-capture-response',
+          data: formData,
+        );
+        debugPrint('[AutoCapture] Unggah selesai untuk RFID $rfidUid');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Berhasil memotret & mengirim data untuk RFID $rfidUid!'),
+              backgroundColor: AppTheme.emerald,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('[AutoCapture] Gagal memotret/mengunggah secara otomatis: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Auto-Capture Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
 
 Widget _buildSectionTitle(IconData icon, String title) {
 return Row(

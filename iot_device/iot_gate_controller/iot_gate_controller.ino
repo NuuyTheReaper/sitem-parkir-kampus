@@ -89,6 +89,7 @@ unsigned long debounceDelay = 50;
 unsigned long lastClickTime = 0;
 const unsigned long clickWindow = 800; // Window waktu untuk deteksi multi-click (ms)
 int clickCount = 0;
+bool wasConnected = false;
 
 // --- Fungsi Indikator Buzzer ---
 void beepTap() {
@@ -173,7 +174,25 @@ void setup() {
 void loop() {
   // Pastikan Wi-Fi tetap terhubung
   if (WiFi.status() != WL_CONNECTED) {
+    if (wasConnected) {
+      wasConnected = false;
+      Serial.println("\n[WIFI] Koneksi Terputus!");
+      
+      // Tampilkan indikator koneksi terputus di LCD
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Koneksi Terputus");
+      lcd.setCursor(0, 1);
+      lcd.print("Menghubungkan...");
+      
+      // Bunyikan bip kegagalan 2 kali berturut-turut sebagai tanda
+      beepFail();
+      delay(200);
+      beepFail();
+    }
     connectToWiFi();
+  } else {
+    wasConnected = true;
   }
 
   // 2. Baca Input Button (Multi-click detection)
@@ -217,6 +236,9 @@ void connectToWiFi() {
   lcd.print("WiFi Connected!");
   lcd.setCursor(0, 1);
   lcd.print(WiFi.localIP().toString());
+  
+  // Set status koneksi terhubung
+  wasConnected = true;
   
   // Bunyikan buzzer sebagai indikator Wi-Fi terkoneksi
   beepWiFiConnected();

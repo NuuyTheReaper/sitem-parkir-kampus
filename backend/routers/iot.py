@@ -314,6 +314,7 @@ async def upload_capture_response(
     foto webcam hasil trigger otomatis dari tap RFID.
     """
     content = await file.read()
+    logger.warning(f"[FE-Capture] MENERIMA FOTO dari browser untuk RFID: {rfid_uid}, Nama File: {file.filename}, Ukuran: {len(content)} bytes")
     
     # 1. Kirim file foto ke ML Service via predict-image
     ml_url = f"{settings.ANPR_SERVICE_URL.rstrip('/')}/api/predict-image"

@@ -649,6 +649,13 @@ async def _run_dual_validation(
     
     if last_log:
         if gate_type == "masuk" and last_log.jenis_aktivitas == models.ActivityTypeEnum.masuk:
+            await manager.broadcast({
+                "type": "error",
+                "message": f"⚠️ Duplikasi Entry — {user.nama} sudah tercatat di dalam area parkir.",
+                "user": user.nama,
+                "plate": target_vehicle.plat_nomor,
+                "image_path": image_path,
+            })
             return DualValidationResponse(
                 action="keep_closed",
                 message="Mahasiswa sudah tercatat di dalam area parkir",
@@ -657,6 +664,13 @@ async def _run_dual_validation(
                 validation_detail="Duplikasi entry — belum ada log keluar"
             )
         elif gate_type == "keluar" and last_log.jenis_aktivitas == models.ActivityTypeEnum.keluar:
+            await manager.broadcast({
+                "type": "error",
+                "message": f"⚠️ Duplikasi Exit — {user.nama} sudah tercatat keluar dari area parkir.",
+                "user": user.nama,
+                "plate": target_vehicle.plat_nomor,
+                "image_path": image_path,
+            })
             return DualValidationResponse(
                 action="keep_closed",
                 message="Mahasiswa sudah tercatat keluar dari area parkir",

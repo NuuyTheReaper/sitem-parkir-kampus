@@ -256,9 +256,9 @@ async def capture_and_validate_gate(
             "gate_type": request.gate_type,
         })
         
-        # Tunggu respon upload dari browser (maksimal 7.5 detik)
+        # Tunggu respon upload dari browser (maksimal 15 detik)
         try:
-            await asyncio.wait_for(event.wait(), timeout=7.5)
+            await asyncio.wait_for(event.wait(), timeout=15.0)
             result = _capture_results.pop(rfid, None)
             if result:
                 logger.info(f"[FE-Capture] Berhasil memproses capture browser untuk RFID {rfid}")

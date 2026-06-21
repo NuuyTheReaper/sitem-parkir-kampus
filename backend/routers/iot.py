@@ -335,6 +335,8 @@ async def upload_capture_response(
     except Exception as e:
         logger.error(f"[FE-Capture] ML Prediction failed: {e}")
         
+    logger.warning(f"[FE-Capture] Hasil ML untuk RFID {rfid_uid}: Plat='{detected_plate}', Conf={confidence}, ImagePath='{image_path}'")
+        
     # 2. Jalankan validasi ganda
     dual_request = DualValidationRequest(
         rfid_uid=rfid_uid,

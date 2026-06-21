@@ -100,6 +100,12 @@ petugas_notifier = PetugasNotificationManager()
 # Format: {"GATE_MASUK_1": {"plate": "G5090DB", "confidence": 0.95, "timestamp": ...}}
 _ml_plate_buffer: dict[str, dict] = {}
 
+# Coordination maps to handle frontend-triggered webcam capture on RFID tap
+# Key: rfid_uid, Value: asyncio.Event
+_pending_captures: dict[str, asyncio.Event] = {}
+# Key: rfid_uid, Value: DualValidationResponse
+_capture_results: dict[str, dict] = {}
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  WebSocket Endpoints
@@ -227,13 +233,42 @@ async def capture_and_validate_gate(
 
     Alur:
     1. ESP32 kirim RFID + gate_type ke backend.
-    2. Backend meminta ANPR service mengambil frame IP camera dan membaca plat.
-    3. Backend menjalankan validasi ganda memakai RFID + hasil ANPR.
-    4. Response action dikirim balik ke ESP32.
+    2. Jika ada monitor browser aktif, backend men-trigger monitor untuk memotret webcam.
+    3. Jika tidak ada / timeout, fallback ke ANPR service mengambil frame IP camera.
+    4. Backend menjalankan validasi ganda memakai RFID + hasil ANPR.
     """
     if request.gate_type not in ["masuk", "keluar"]:
         raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
 
+    # Cek jika ada browser (dashboard petugas) yang sedang aktif terhubung lewat websocket
+    if manager.active_connections:
+        rfid = request.rfid_uid
+        event = asyncio.Event()
+        _pending_captures[rfid] = event
+        
+        logger.info(f"[FE-Capture] Meminta capture dari browser untuk RFID {rfid}...")
+        
+        # Kirim trigger ke frontend untuk mengambil gambar
+        await manager.broadcast({
+            "type": "trigger_capture",
+            "rfid_uid": rfid,
+            "gate_id": request.gate_id or "GATE_ESP8266",
+            "gate_type": request.gate_type,
+        })
+        
+        # Tunggu respon upload dari browser (maksimal 7.5 detik)
+        try:
+            await asyncio.wait_for(event.wait(), timeout=7.5)
+            result = _capture_results.pop(rfid, None)
+            if result:
+                logger.info(f"[FE-Capture] Berhasil memproses capture browser untuk RFID {rfid}")
+                return result
+        except asyncio.TimeoutError:
+            logger.warning(f"[FE-Capture] Timeout menunggu capture browser untuk RFID {rfid}")
+        finally:
+            _pending_captures.pop(rfid, None)
+
+    # Fallback ke alur standard RTSP jika tidak ada monitor browser aktif atau terjadi timeout
     # Dapatkan fallback plate dinonaktifkan agar sistem selalu melakukan pemindaian plat riil via kamera/webcam
     fallback_plate = None
 
@@ -264,6 +299,57 @@ async def capture_and_validate_gate(
         gate_id=scan.gate_id,
     )
     return await _run_dual_validation(dual_request, db, image_path=scan.image_path)
+
+
+@router.post("/upload-capture-response")
+async def upload_capture_response(
+    rfid_uid: str = Form(..., description="UID kartu RFID"),
+    gate_type: str = Form(..., description="'masuk' atau 'keluar'"),
+    gate_id: str = Form("GATE_DEFAULT", description="ID gerbang"),
+    file: UploadFile = File(..., description="Foto hasil capture browser"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint yang dipanggil oleh browser (dashboard petugas) untuk mengirimkan
+    foto webcam hasil trigger otomatis dari tap RFID.
+    """
+    content = await file.read()
+    
+    # 1. Kirim file foto ke ML Service via predict-image
+    ml_url = f"{settings.ANPR_SERVICE_URL.rstrip('/')}/api/predict-image"
+    detected_plate = ""
+    confidence = 0.0
+    image_path = None
+    
+    try:
+        async with httpx.AsyncClient(timeout=settings.ANPR_SCAN_TIMEOUT_SECONDS) as client:
+            files = {"file": (file.filename, content, file.content_type or "image/jpeg")}
+            data = {"gate_id": gate_id}
+            response = await client.post(ml_url, files=files, data=data)
+            if response.status_code == 200:
+                res_data = response.json()
+                detected_plate = res_data.get("detected_plate", "")
+                confidence = res_data.get("confidence", 0.0)
+                image_path = res_data.get("image_path", "")
+    except Exception as e:
+        logger.error(f"[FE-Capture] ML Prediction failed: {e}")
+        
+    # 2. Jalankan validasi ganda
+    dual_request = DualValidationRequest(
+        rfid_uid=rfid_uid,
+        detected_plate=detected_plate,
+        ml_confidence=confidence,
+        gate_type=gate_type,
+        gate_id=gate_id,
+    )
+    result = await _run_dual_validation(dual_request, db, image_path=image_path)
+    
+    # 3. Notifikasi event agar thread /capture-validate yang sedang menunggu bisa terbangun
+    if rfid_uid in _pending_captures:
+        _capture_results[rfid_uid] = result
+        _pending_captures[rfid_uid].set()
+        
+    return {"status": "success", "message": "Captured response validation complete"}
 
 
 @router.post("/upload-validate", response_model=DualValidationResponse)
@@ -990,4 +1076,3 @@ def proxy_camera_stream(camera_url: str):
         generate_frames(), 
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
-

@@ -295,6 +295,7 @@ async def scan_plate(request: ScanRequest):
     """
     frame = None
     ret = False
+    source_val = request.camera_url or CAMERA_SOURCE
 
     if USE_REAL_ML:
         try:
@@ -303,14 +304,20 @@ async def scan_plate(request: ScanRequest):
                 print(f"[ML Service] Membaca file gambar lokal: {request.camera_url}")
                 frame = cv2.imread(request.camera_url)
                 ret = frame is not None
+            elif isinstance(request.camera_url, str) and request.camera_url.strip():
+                # 2. Ambil frame dari URL kamera yang dikirim (IP Cam / RTSP / HTTP Stream)
+                print(f"[ML Service] Membaca frame dari URL kamera: {request.camera_url}")
+                cap = cv2.VideoCapture(request.camera_url)
+                ret, frame = cap.read()
+                cap.release()
             else:
-                # 2. Ambil dari background streamer (Webcam Eksternal) yang sedang berjalan
+                # 3. Ambil dari background streamer (Webcam Eksternal) yang sedang berjalan
                 ret, frame = camera_streamer.get_frame()
                 if not ret or frame is None:
                     # Fallback jika streamer background kosong, coba baca langsung sekali
                     print("[ML Service] Streamer background kosong. Mencoba membaca langsung...")
-                    source_val = int(CAMERA_SOURCE) if CAMERA_SOURCE.isdigit() else CAMERA_SOURCE
-                    cap = cv2.VideoCapture(source_val)
+                    source_index = int(CAMERA_SOURCE) if CAMERA_SOURCE.isdigit() else CAMERA_SOURCE
+                    cap = cv2.VideoCapture(source_index)
                     ret, frame = cap.read()
                     cap.release()
             
@@ -344,9 +351,9 @@ async def scan_plate(request: ScanRequest):
                     image_path=relative_path,
                 )
             else:
-                print(f"[ML Error] Gagal memperoleh gambar dari sumber: {video_source}")
+                print(f"[ML Error] Gagal memperoleh gambar dari sumber: {source_val}")
         except Exception as e:
-            print(f"[ML Error] Error saat mengambil gambar dari {video_source}: {e}")
+            print(f"[ML Error] Error saat mengambil gambar dari {source_val}: {e}")
             
     # 4. Fallback ke simulator cerdas jika input RFID memiliki plat terdaftar
     if request.fallback_plate:

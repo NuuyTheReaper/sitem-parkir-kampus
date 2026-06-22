@@ -645,16 +645,31 @@ _autoCaptureAndUpload(rfidUid, gateId, gateType);
 return; // Skip adding trigger control message to UI activity list
 }
 
-if (mounted) {
-setState(() {
-logs.insert(0, decoded);
-while (logs.length > 3) {
-logs.removeLast();
-}
-});
-// Trigger global refresh so capacity/chart update too
-ref.read(refreshTriggerProvider.notifier).state++;
-}
+    if (mounted) {
+      final type = decoded['type']?.toString();
+      if (type == 'update') {
+        // Trigger global refresh only
+        ref.read(refreshTriggerProvider.notifier).state++;
+        return;
+      }
+      if (type == 'rfid_register') {
+        // Skip RFID registration event in ALPR logs
+        return;
+      }
+      if (type == 'error' && decoded['plate'] == null && decoded['rfid'] == null) {
+        // Skip system errors that don't belong to a specific scan
+        return;
+      }
+
+      setState(() {
+        logs.insert(0, decoded);
+        while (logs.length > 3) {
+          logs.removeLast();
+        }
+      });
+      // Trigger global refresh so capacity/chart update too
+      ref.read(refreshTriggerProvider.notifier).state++;
+    }
 } catch (e) {
 debugPrint('WS Live Monitor Error: $e');
 }

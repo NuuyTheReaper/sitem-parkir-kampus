@@ -259,18 +259,32 @@ def get_parking_reports(db: Session = Depends(get_db)):
     logs = db.query(models.ParkingLog).order_by(models.ParkingLog.waktu.desc()).limit(200).all()
     result = []
     for log in logs:
-        user = db.query(models.User).filter(models.User.id == log.user_id).first()
-        vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
+        if log.emergency_guest_id:
+            guest = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.id == log.emergency_guest_id).first()
+            user_nama = guest.nama if guest else "Tamu Darurat"
+            user_nim = "Tamu Darurat"
+            vehicle_plat = guest.plat_nomor if guest else "-"
+            vehicle_jenis = "Mobil/Motor"
+        else:
+            user = db.query(models.User).filter(models.User.id == log.user_id).first()
+            vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
+            user_nama = user.nama if user else "Unknown"
+            user_nim = user.nim_npp if user else "-"
+            vehicle_plat = vehicle.plat_nomor if vehicle else "-"
+            vehicle_jenis = vehicle.jenis_kendaraan if vehicle else "-"
+            
+        status_akses_display = "Emergency gate" if log.status_akses == models.AccessStatusEnum.manual_petugas else log.status_akses
+        
         result.append({
             "id": log.id,
             "user_id": log.user_id,
-            "user_nama": user.nama if user else "Unknown",
-            "user_nim": user.nim_npp if user else "-",
+            "user_nama": user_nama,
+            "user_nim": user_nim,
             "vehicle_id": log.vehicle_id,
-            "vehicle_plat": vehicle.plat_nomor if vehicle else "-",
-            "vehicle_jenis": vehicle.jenis_kendaraan if vehicle else "-",
+            "vehicle_plat": vehicle_plat,
+            "vehicle_jenis": vehicle_jenis,
             "jenis_aktivitas": log.jenis_aktivitas,
-            "status_akses": log.status_akses,
+            "status_akses": status_akses_display,
             "waktu": log.waktu.isoformat() if log.waktu else None,
         })
     return result
@@ -286,16 +300,30 @@ def export_logs_csv(db: Session = Depends(get_db)):
     writer.writerow(["No", "Nama", "NIM/NPP", "Plat Nomor", "Jenis Kendaraan", "Aktivitas", "Status Akses", "Waktu"])
     
     for idx, log in enumerate(logs, 1):
-        user = db.query(models.User).filter(models.User.id == log.user_id).first()
-        vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
+        if log.emergency_guest_id:
+            guest = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.id == log.emergency_guest_id).first()
+            user_nama = guest.nama if guest else "Tamu Darurat"
+            user_nim = "Tamu Darurat"
+            vehicle_plat = guest.plat_nomor if guest else "-"
+            vehicle_jenis = "Mobil/Motor"
+        else:
+            user = db.query(models.User).filter(models.User.id == log.user_id).first()
+            vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
+            user_nama = user.nama if user else "Unknown"
+            user_nim = user.nim_npp if user else "-"
+            vehicle_plat = vehicle.plat_nomor if vehicle else "-"
+            vehicle_jenis = vehicle.jenis_kendaraan if vehicle else "-"
+            
+        status_akses_display = "Emergency gate" if log.status_akses == models.AccessStatusEnum.manual_petugas else log.status_akses
+        
         writer.writerow([
             idx,
-            user.nama if user else "Unknown",
-            user.nim_npp if user else "-",
-            vehicle.plat_nomor if vehicle else "-",
-            vehicle.jenis_kendaraan if vehicle else "-",
+            user_nama,
+            user_nim,
+            vehicle_plat,
+            vehicle_jenis,
             log.jenis_aktivitas,
-            log.status_akses,
+            status_akses_display,
             log.waktu.strftime("%Y-%m-%d %H:%M:%S") if log.waktu else "-",
         ])
     

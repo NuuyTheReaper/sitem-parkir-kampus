@@ -9,9 +9,9 @@ async def trigger_physical_servo():
     try:
         from routers import iot
         iot.local_servo_trigger = 1
-        print("[Firebase Helper] ✅ local_servo_trigger set to 1")
+        print("[Firebase Helper] [OK] local_servo_trigger set to 1")
     except Exception as e:
-        print(f"[Firebase Helper] ❌ Error setting local_servo_trigger: {e}")
+        print(f"[Firebase Helper] [ERROR] Error setting local_servo_trigger: {e}")
 
     if not settings.FIREBASE_DB_URL:
         print("[Firebase Helper] Warning: FIREBASE_DB_URL tidak diatur di backend. Menggunakan HTTP trigger saja.")
@@ -27,10 +27,10 @@ async def trigger_physical_servo():
             # Menggunakan PUT untuk mengupdate nilai /gate/servo_trigger menjadi 1
             response = await client.put(url, params=params, json=1, timeout=5)
             if response.status_code == 200:
-                print("[Firebase Helper] ✅ Berhasil mengirim sinyal trigger servo ke Firebase.")
+                print("[Firebase Helper] [OK] Berhasil mengirim sinyal trigger servo ke Firebase.")
                 return True
             else:
-                print(f"[Firebase Helper] ⚠️ Gagal update Firebase: HTTP {response.status_code} - {response.text}")
+                print(f"[Firebase Helper] [WARN] Gagal update Firebase: HTTP {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"[Firebase Helper] ❌ Error menghubungi Firebase: {e}")
+        print(f"[Firebase Helper] [ERROR] Error menghubungi Firebase: {e}")
     return False

@@ -2536,7 +2536,7 @@ if (gate == 'masuk' || (gate == 'keluar' && selectedGuestId == null)) ...[
 TextField(
 controller: nameController,
 decoration: InputDecoration(
-hintText: 'Nama Tamu',
+hintText: 'Nama',
 prefixIcon: const Icon(IconlyLight.profile, size: 20),
 suffixIcon: IconButton(
 icon: const Icon(Icons.search_rounded, color: AppTheme.slate400, size: 20),

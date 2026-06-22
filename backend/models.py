@@ -102,12 +102,14 @@ class ParkingLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    emergency_guest_id = Column(Integer, ForeignKey("emergency_guests.id"), nullable=True)
     waktu = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     jenis_aktivitas = Column(SQLEnum(ActivityTypeEnum), nullable=False)
     status_akses = Column(SQLEnum(AccessStatusEnum), nullable=False)
 
     user = relationship("User", back_populates="parking_logs")
     vehicle = relationship("Vehicle", back_populates="parking_logs")
+    emergency_guest = relationship("EmergencyGuest")
 
 class AccessRequest(Base):
     __tablename__ = "access_requests"

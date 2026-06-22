@@ -850,11 +850,26 @@ async def emergency_gate_action(
     # Check if this is a registered student's vehicle
     if kendaraan:
         normalized_input = normalize_plate(kendaraan)
-        vehicles = db.query(models.Vehicle).filter(models.Vehicle.status_validasi == models.ValidationStatusEnum.disetujui).all()
+        # Search all vehicles (including pending/ditolak)
+        vehicles = db.query(models.Vehicle).all()
         for v in vehicles:
             if normalize_plate(v.plat_nomor) == normalized_input:
                 registered_vehicle = v
                 registered_user = v.user
+                
+                # Automatically approve the vehicle if it's not approved yet
+                if registered_vehicle.status_validasi != models.ValidationStatusEnum.disetujui:
+                    registered_vehicle.status_validasi = models.ValidationStatusEnum.disetujui
+                
+                # Auto-approve any pending AccessRequest for this user
+                pending_reqs = db.query(models.AccessRequest).filter(
+                    models.AccessRequest.user_id == registered_user.id,
+                    models.AccessRequest.status == models.AccessRequestStatusEnum.pending
+                ).all()
+                for pr in pending_reqs:
+                    pr.status = models.AccessRequestStatusEnum.disetujui
+                    pr.waktu_respon = datetime.now(timezone.utc)
+                    pr.catatan = "Disetujui otomatis melalui Emergency Gate"
                 
                 # Create log under the student's ID
                 new_log = models.ParkingLog(
@@ -872,6 +887,7 @@ async def emergency_gate_action(
                 break
 
     if not is_registered_student:
+        guest_id_to_log = None
         if gate == "masuk":
             if not nama or not kendaraan:
                 raise HTTPException(status_code=400, detail="Nama dan kendaraan wajib diisi untuk gate masuk")
@@ -887,6 +903,7 @@ async def emergency_gate_action(
             db.refresh(guest)
             display_name = guest.nama
             display_plate = guest.plat_nomor
+            guest_id_to_log = guest.id
             
         elif gate == "keluar":
             if guest_id:
@@ -902,19 +919,57 @@ async def emergency_gate_action(
                     db.commit()
                     display_name = guest.nama
                     display_plate = guest.plat_nomor
+                    guest_id_to_log = guest.id
                 else:
                     display_name = "Guest Not Found"
             else:
                 # Manual exit without guest_id
                 if not nama or not kendaraan:
                     raise HTTPException(status_code=400, detail="Nama dan kendaraan wajib diisi jika tidak memilih tamu dari daftar")
-                display_name = nama
-                display_plate = kendaraan
+                
+                # Find if there is an active guest with this plate
+                normalized_plate_input = normalize_plate(kendaraan)
+                active_guests = db.query(models.EmergencyGuest).filter(
+                    models.EmergencyGuest.status == "di_dalam"
+                ).all()
+                
+                found_guest = None
+                for g in active_guests:
+                    if normalize_plate(g.plat_nomor) == normalized_plate_input:
+                        found_guest = g
+                        break
+                
+                if found_guest:
+                    found_guest.waktu_keluar = datetime.now(timezone.utc)
+                    found_guest.petugas_keluar_id = current_user.id
+                    found_guest.status = "sudah_keluar"
+                    db.commit()
+                    display_name = found_guest.nama
+                    display_plate = found_guest.plat_nomor
+                    guest_id_to_log = found_guest.id
+                else:
+                    # Create a new EmergencyGuest checked out immediately
+                    new_guest = models.EmergencyGuest(
+                        nama=nama,
+                        plat_nomor=kendaraan,
+                        alasan=reason,
+                        petugas_masuk_id=current_user.id,
+                        petugas_keluar_id=current_user.id,
+                        waktu_keluar=datetime.now(timezone.utc),
+                        status="sudah_keluar"
+                    )
+                    db.add(new_guest)
+                    db.commit()
+                    db.refresh(new_guest)
+                    display_name = new_guest.nama
+                    display_plate = new_guest.plat_nomor
+                    guest_id_to_log = new_guest.id
 
-        # Log it as manual_petugas activity (only for non-registered users, since registered users already got their log)
+        # Log it as manual_petugas activity (for non-registered users, linking the guest)
         new_log = models.ParkingLog(
             user_id=current_user.id,
-            vehicle_id=1, # Dummy or generic ID for emergency
+            vehicle_id=1,  # Dummy vehicle ID
+            emergency_guest_id=guest_id_to_log,
             jenis_aktivitas=gate,
             status_akses=models.AccessStatusEnum.manual_petugas
         )

@@ -75,6 +75,14 @@ def update_database():
                 print(f"emergency_guest_id might already exist: {e}")
         except Exception as e:
             print(f"Error modifying access_requests: {e}")
+
+        print("Updating 'parking_logs' table...")
+        try:
+            conn.execute(text("ALTER TABLE parking_logs ADD COLUMN emergency_guest_id INTEGER NULL"))
+            conn.execute(text("ALTER TABLE parking_logs ADD FOREIGN KEY (emergency_guest_id) REFERENCES emergency_guests(id)"))
+            print("Added 'emergency_guest_id' column to parking_logs.")
+        except Exception as e:
+            print(f"Column 'emergency_guest_id' might already exist or failed: {e}")
         
         conn.commit()
 

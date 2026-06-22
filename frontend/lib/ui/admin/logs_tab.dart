@@ -345,7 +345,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                 itemBuilder: (context, index) {
                   final log = logs[index];
                   final isMasuk = log['jenis_aktivitas'] == 'masuk';
-                  final isManual = log['status_akses'] == 'manual_petugas';
+                  final isManual = log['status_akses'] == 'manual_petugas' || log['status_akses'] == 'Emergency gate';
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -416,7 +416,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                                       : Colors.blue.shade200),
                             ),
                             child: Text(
-                              isManual ? 'MANUAL' : 'AUTO',
+                              isManual ? 'Emergency gate' : 'AUTO',
                               style: TextStyle(
                                 color: isManual
                                     ? const Color(0xFF8B6914)

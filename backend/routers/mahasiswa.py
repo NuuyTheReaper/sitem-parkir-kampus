@@ -198,11 +198,12 @@ def get_parking_history(current_user: models.User = Depends(get_mahasiswa), db: 
     result = []
     for log in logs:
         vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
+        status_akses_display = "Emergency gate" if log.status_akses == models.AccessStatusEnum.manual_petugas else log.status_akses
         result.append({
             "id": log.id,
             "waktu": log.waktu.isoformat() if log.waktu else None,
             "jenis_aktivitas": log.jenis_aktivitas,
-            "status_akses": log.status_akses,
+            "status_akses": status_akses_display,
             "plat_nomor": vehicle.plat_nomor if vehicle else "Unknown",
         })
     return result

@@ -637,7 +637,6 @@ void checkFirebaseTrigger() {
   WiFiClientSecure client;
   client.setInsecure(); // ESP8266 mengabaikan verifikasi SSL certificate
   HTTPClient http;
-  bool shouldReset = false;
 
   String url = "https://" + firebaseHost + "/gate/servo_trigger.json";
   if (firebaseSecret != "") {
@@ -654,42 +653,23 @@ void checkFirebaseTrigger() {
     if (triggerValue == 1) {
       Serial.println("[FIREBASE] Sinyal Buka Gerbang Diterima!");
       
-      // Buka Gerbang
+      // Reset trigger ke 0 DULU sebelum membuka gerbang,
+      // untuk menghemat memori (heap RAM) dengan menggunakan objek koneksi yang sama.
+      http.end(); // Tutup sesi GET
+      
+      http.begin(client, url); // Buka kembali menggunakan objek client yang sama
+      http.addHeader("Content-Type", "application/json");
+      int putCode = http.PUT("0");
+      if (putCode == 200) {
+        Serial.println("[FIREBASE] Trigger berhasil di-reset kembali ke 0.");
+      } else {
+        Serial.print("[FIREBASE] Gagal mereset trigger: HTTP ");
+        Serial.println(putCode);
+      }
+      
+      // Buka Gerbang setelah trigger di-reset (menghindari delay blocking mempengaruhi reset)
       openGate();
-
-      // Tandai bahwa trigger perlu di-reset
-      shouldReset = true;
     }
-  }
-  http.end(); // Tutup koneksi HTTPS pertama terlebih dahulu untuk menghemat memori (RAM)
-
-  // Jalankan reset jika diperlukan setelah koneksi sebelumnya ditutup
-  if (shouldReset) {
-    resetFirebaseTrigger();
-  }
-}
-
-// Fungsi meriset trigger gerbang kembali ke 0 di Firebase
-void resetFirebaseTrigger() {
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-
-  String url = "https://" + firebaseHost + "/gate/servo_trigger.json";
-  if (firebaseSecret != "") {
-    url += "?auth=" + firebaseSecret;
-  }
-
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-
-  // PUT nilai 0 ke path trigger
-  int httpResponseCode = http.PUT("0");
-  if (httpResponseCode == 200) {
-    Serial.println("[FIREBASE] Trigger berhasil di-reset kembali ke 0.");
-  } else {
-    Serial.print("[FIREBASE] Gagal mereset trigger: HTTP ");
-    Serial.println(httpResponseCode);
   }
   http.end();
 }

@@ -261,21 +261,27 @@ void connectToWiFi() {
 // Fungsi Mengupdate LCD Indikator berdasarkan Mode Aktif (sebelumnya LED Indikator)
 void updateLedIndicators() {
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Smart Parking");
-  lcd.setCursor(0, 1);
   
   if (currentMode == MODE_MASUK) {
+    lcd.setCursor(0, 0);
     lcd.print("Gate: MASUK");
-    Serial.println("[MODE] Masuk (1x click)");
+    lcd.setCursor(0, 1);
+    lcd.print("Silakan Tap...");
+    Serial.println("[MODE] Masuk (1x click) - SIAP TAP");
   } 
   else if (currentMode == MODE_KELUAR) {
+    lcd.setCursor(0, 0);
     lcd.print("Gate: KELUAR");
-    Serial.println("[MODE] Keluar (2x click)");
+    lcd.setCursor(0, 1);
+    lcd.print("Silakan Tap...");
+    Serial.println("[MODE] Keluar (2x click) - SIAP TAP");
   } 
   else if (currentMode == MODE_DAFTAR) {
+    lcd.setCursor(0, 0);
     lcd.print("Mode: DAFTAR");
-    Serial.println("[MODE] Daftar Kartu Baru (4x click)");
+    lcd.setCursor(0, 1);
+    lcd.print("Tempel Kartu...");
+    Serial.println("[MODE] Daftar Kartu Baru (4x click) - SIAP TAP");
   }
 }
 

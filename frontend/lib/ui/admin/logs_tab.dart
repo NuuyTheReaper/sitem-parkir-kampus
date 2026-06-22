@@ -59,6 +59,10 @@ class _LogsTabState extends ConsumerState<LogsTab> {
     try {
       final response = await ref.read(dioProvider).get<List<int>>(
         'admin/reports/export-csv',
+        queryParameters: {
+          'jenis': _typeFilter,
+          'periode': _periodFilter,
+        },
         options: Options(responseType: ResponseType.bytes),
       );
 

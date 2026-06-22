@@ -291,9 +291,33 @@ def get_parking_reports(db: Session = Depends(get_db)):
 
 # ── Export Logs as CSV ──────────────────────────────────────
 @router.get("/reports/export-csv")
-def export_logs_csv(db: Session = Depends(get_db)):
-    """Export all parking logs as a downloadable CSV file."""
-    logs = db.query(models.ParkingLog).order_by(models.ParkingLog.waktu.desc()).limit(500).all()
+def export_logs_csv(
+    jenis: str = "semua",
+    periode: str = "semua",
+    db: Session = Depends(get_db)
+):
+    """Export parking logs as a downloadable CSV file, filtered by type and period."""
+    query = db.query(models.ParkingLog)
+    
+    # Filter by jenis
+    if jenis in ["masuk", "keluar"]:
+        query = query.filter(models.ParkingLog.jenis_aktivitas == jenis)
+        
+    # Filter by periode
+    if periode != "semua":
+        from datetime import datetime, timedelta, time
+        now = datetime.now()
+        today_start = datetime.combine(now.date(), time.min)
+        if periode == "hari_ini":
+            query = query.filter(models.ParkingLog.waktu >= today_start)
+        elif periode == "7_hari":
+            start_date = today_start - timedelta(days=6)
+            query = query.filter(models.ParkingLog.waktu >= start_date)
+        elif periode == "30_hari":
+            start_date = today_start - timedelta(days=29)
+            query = query.filter(models.ParkingLog.waktu >= start_date)
+
+    logs = query.order_by(models.ParkingLog.waktu.desc()).limit(1000).all()
     
     output = io.StringIO()
     writer = csv.writer(output)

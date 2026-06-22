@@ -93,7 +93,7 @@ bool wasConnected = false;
 
 // Variabel untuk Firebase polling interval (non-blocking)
 unsigned long lastFirebaseCheck = 0;
-const unsigned long firebaseCheckInterval = 2000; // Cek setiap 2 detik
+const unsigned long firebaseCheckInterval = 3000; // Cek setiap 3 detik
 
 // --- Fungsi Indikator Buzzer ---
 void beepTap() {
@@ -203,10 +203,10 @@ void loop() {
   handleButtonInput();
 
   // 3. Baca RFID Card jika ada kartu yang di-tap
-  handleRfidInput();
+  bool cardProcessed = handleRfidInput();
 
   // 4. Cek Firebase Trigger secara berkala (non-blocking)
-  if (millis() - lastFirebaseCheck >= firebaseCheckInterval) {
+  if (!cardProcessed && (millis() - lastFirebaseCheck >= firebaseCheckInterval)) {
     lastFirebaseCheck = millis();
     checkFirebaseTrigger();
   }
@@ -402,15 +402,15 @@ void triggerEmergencyLocal() {
   updateLedIndicators();
 }
 
-// Fungsi mendeteksi & memproses RFID
-void handleRfidInput() {
+// Fungsi mendeteksi & memproses RFID (mengembalikan true jika ada kartu terbaca)
+bool handleRfidInput() {
   // Cek apakah ada kartu baru mendekat
   if (!mfrc522.PICC_IsNewCardPresent()) {
-    return;
+    return false;
   }
   // Cek apakah kartu bisa dibaca
   if (!mfrc522.PICC_ReadCardSerial()) {
-    return;
+    return false;
   }
 
   // Konversi UID Kartu ke Hex String
@@ -441,6 +441,7 @@ void handleRfidInput() {
   } else {
     sendValidationRequest(rfidUid);
   }
+  return true;
 }
 
 // Fungsi mengirim request validasi ganda ke API Backend

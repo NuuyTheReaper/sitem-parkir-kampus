@@ -444,7 +444,11 @@ async def upload_and_validate_gate(
         gate_id=gate_id
     )
     
-    return await _run_dual_validation(dual_request, db, image_path=relative_path)
+    result = await _run_dual_validation(dual_request, db, image_path=relative_path)
+    if result.action == "open_gate" and gate_id != "GATE_ESP8266":
+        from core.firebase import trigger_physical_servo
+        await trigger_physical_servo()
+    return result
 
 
 async def _request_anpr_scan(

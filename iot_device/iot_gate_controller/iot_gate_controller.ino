@@ -91,6 +91,10 @@ const unsigned long clickWindow = 800; // Window waktu untuk deteksi multi-click
 int clickCount = 0;
 bool wasConnected = false;
 
+// Variabel untuk Firebase polling interval (non-blocking)
+unsigned long lastFirebaseCheck = 0;
+const unsigned long firebaseCheckInterval = 2000; // Cek setiap 2 detik
+
 // --- Fungsi Indikator Buzzer ---
 void beepTap() {
   digitalWrite(PIN_BUZZER, HIGH);
@@ -200,6 +204,12 @@ void loop() {
 
   // 3. Baca RFID Card jika ada kartu yang di-tap
   handleRfidInput();
+
+  // 4. Cek Firebase Trigger secara berkala (non-blocking)
+  if (millis() - lastFirebaseCheck >= firebaseCheckInterval) {
+    lastFirebaseCheck = millis();
+    checkFirebaseTrigger();
+  }
 }
 
 // ====================================================================

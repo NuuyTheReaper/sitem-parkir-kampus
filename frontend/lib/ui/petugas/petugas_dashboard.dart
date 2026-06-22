@@ -1388,128 +1388,137 @@ Widget _buildEmergencySectionCard() {
         const SizedBox(height: 20),
         const Divider(height: 1),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Colors.orange,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              'Tamu Darurat Aktif di Kampus',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: AppTheme.slate800,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        FutureBuilder<Response>(
-          future: ref.read(dioProvider).get('gate/emergency-guests'),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
-                  ),
-                ),
-              );
-            }
-            if (snapshot.hasError || !snapshot.hasData) {
-              return const Text(
-                'Gagal memuat daftar tamu',
-                style: TextStyle(fontSize: 11, color: Colors.red),
-              );
-            }
-            final list = snapshot.data!.data as List<dynamic>;
-            if (list.isEmpty) {
-              return Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: AppTheme.slate50,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Center(
-                  child: Text(
-                    'Tidak ada tamu darurat aktif',
-                    style: TextStyle(fontSize: 11, color: AppTheme.slate400, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              );
-            }
-            return ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: list.length,
-              itemBuilder: (context, index) {
-                final item = list[index];
-                final nama = item['nama'] ?? '';
-                final plat = item['plat_nomor'] ?? '';
-                final alasan = item['alasan'] ?? '';
-                
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.orange.withOpacity(0.15)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              nama,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.slate800),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Alasan: $alasan',
-                              style: const TextStyle(fontSize: 10, color: AppTheme.slate500),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.orange.withOpacity(0.2)),
-                        ),
-                        child: Text(
-                          plat,
-                          style: const TextStyle(
-                            fontFamily: 'Courier',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        ),
+        _buildActiveEmergencyGuestsList(),
       ],
     ),
+  );
+}
+
+Widget _buildActiveEmergencyGuestsList() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Colors.orange,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            'Tamu Darurat Aktif di Kampus',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: AppTheme.slate800,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      FutureBuilder<Response>(
+        future: ref.read(dioProvider).get('gate/emergency-guests'),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                ),
+              ),
+            );
+          }
+          if (snapshot.hasError || !snapshot.hasData) {
+            return const Text(
+              'Gagal memuat daftar tamu',
+              style: TextStyle(fontSize: 11, color: Colors.red),
+            );
+          }
+          final list = snapshot.data!.data as List<dynamic>;
+          if (list.isEmpty) {
+            return Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppTheme.slate50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Center(
+                child: Text(
+                  'Tidak ada tamu darurat aktif',
+                  style: TextStyle(fontSize: 11, color: AppTheme.slate400, fontWeight: FontWeight.w500),
+                ),
+              ),
+            );
+          }
+          return ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: list.length,
+            itemBuilder: (context, index) {
+              final item = list[index];
+              final nama = item['nama'] ?? '';
+              final plat = item['plat_nomor'] ?? '';
+              final alasan = item['alasan'] ?? '';
+              
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.withOpacity(0.15)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nama,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.slate800),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Alasan: $alasan',
+                            style: const TextStyle(fontSize: 10, color: AppTheme.slate500),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                      ),
+                      child: Text(
+                        plat,
+                        style: const TextStyle(
+                          fontFamily: 'Courier',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    ],
   );
 }
 
@@ -2178,72 +2187,77 @@ _buildEmergencyPanel(),
 }
 
 Widget _buildEmergencyPanel() {
-return Container(
-padding: const EdgeInsets.all(16),
-decoration: BoxDecoration(
-color: Colors.white,
-border: Border(top: BorderSide(color: Colors.grey[200]!)),
-boxShadow: [],
-),
-child: Column(
-children: [
-GestureDetector(
-onTap: () {
-setState(() {
-_isEmergencyExpanded = !_isEmergencyExpanded;
-});
-},
-child: Row(
-children: [
-const Icon(IconlyLight.danger, color: Colors.orange, size: 18),
-const SizedBox(width: 8),
-const Text('Emergency Override',
-style: TextStyle(
-fontWeight: FontWeight.bold,
-fontSize: 13,
-color: Colors.orange)),
-const Spacer(),
-Icon(
-_isEmergencyExpanded
-? Icons.keyboard_arrow_up_rounded
-: Icons.keyboard_arrow_down_rounded,
-color: Colors.orange,
-),
-],
-),
-),
-if (_isEmergencyExpanded) ...[
-const SizedBox(height: 12),
-Column(
-crossAxisAlignment: CrossAxisAlignment.stretch,
-children: [
-ElevatedButton.icon(
-onPressed: () => _handleEmergencyOpen('masuk'),
-style: ElevatedButton.styleFrom(
-backgroundColor: Colors.orange,
-foregroundColor: Colors.white,
-padding: const EdgeInsets.symmetric(vertical: 12)),
-icon: const Icon(IconlyLight.login, size: 18),
-label: const Text('Buka Gate Masuk',
-style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-),
-const SizedBox(height: 12),
-ElevatedButton.icon(
-onPressed: () => _handleEmergencyOpen('keluar'),
-style: ElevatedButton.styleFrom(
-backgroundColor: Colors.orange,
-foregroundColor: Colors.white,
-padding: const EdgeInsets.symmetric(vertical: 12)),
-icon: const Icon(IconlyLight.logout, size: 18),
-label: const Text('Buka Gate Keluar',
-style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-),
-],
-),
-]
-],
-),
-);
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border(top: BorderSide(color: Colors.grey[200]!)),
+      boxShadow: [],
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isEmergencyExpanded = !_isEmergencyExpanded;
+            });
+          },
+          child: Row(
+            children: [
+              const Icon(IconlyLight.danger, color: Colors.orange, size: 18),
+              const SizedBox(width: 8),
+              const Text('Emergency Override',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Colors.orange)),
+              const Spacer(),
+              Icon(
+                _isEmergencyExpanded
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.keyboard_arrow_down_rounded,
+                color: Colors.orange,
+              ),
+            ],
+          ),
+        ),
+        if (_isEmergencyExpanded) ...[
+          const SizedBox(height: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _handleEmergencyOpen('masuk'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+                icon: const Icon(IconlyLight.login, size: 18),
+                label: const Text('Buka Gate Masuk',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () => _handleEmergencyOpen('keluar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+                icon: const Icon(IconlyLight.logout, size: 18),
+                label: const Text('Buka Gate Keluar',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 16),
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              _buildActiveEmergencyGuestsList(),
+            ],
+          ),
+        ]
+      ],
+    ),
+  );
 }
 
 Future<void> _handleEmergencyOpen(String gate) async {

@@ -49,8 +49,8 @@
 
 // --- Konfigurasi Wi-Fi ---
 // Hubungkan ESP8266 ke Wi-Fi yang sama dengan PC/Laptop Anda untuk uji coba lokal.
-const char* ssid = "Faris Maulana";          // Ganti dengan nama Wi-Fi Anda
-const char* password = "Adiwerna2345";  // Ganti dengan password Wi-Fi Anda
+const char* ssid = "Makoto.wifi";          // Ganti dengan nama Wi-Fi Anda
+const char* password = "harisabtu";  // Ganti dengan password Wi-Fi Anda
 
 // --- Konfigurasi Backend & Firebase ---
 // Gunakan IP Address lokal atau domain hosted

@@ -1321,73 +1321,196 @@ color: AppTheme.slate900),
 }
 
 Widget _buildEmergencySectionCard() {
-return Container(
-padding: const EdgeInsets.all(16),
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(16),
-border: Border.all(color: Colors.orange.withOpacity(0.3)),
-boxShadow: AppTheme.subtleShadow,
-),
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-Row(
-children: const [
-Icon(IconlyLight.danger, color: Colors.orange, size: 18),
-SizedBox(width: 8),
-Text(
-'Emergency Override',
-style: TextStyle(
-fontWeight: FontWeight.bold,
-fontSize: 14,
-color: Colors.orange,
-),
-),
-],
-),
-const SizedBox(height: 8),
-const Text(
-'Aksi di bawah ini akan membuka gerbang secara paksa dan dicatat sebagai aksi darurat.',
-style: TextStyle(fontSize: 12, color: AppTheme.slate500),
-),
-const SizedBox(height: 16),
-Row(
-children: [
-Expanded(
-child: ElevatedButton.icon(
-onPressed: () => _handleEmergencyOpen('masuk'),
-style: ElevatedButton.styleFrom(
-backgroundColor: Colors.orange,
-foregroundColor: Colors.white,
-padding: const EdgeInsets.symmetric(vertical: 12),
-shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-),
-icon: const Icon(IconlyLight.login, size: 16),
-label: const Text('Gate Masuk',
-style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-),
-),
-const SizedBox(width: 12),
-Expanded(
-child: ElevatedButton.icon(
-onPressed: () => _handleEmergencyOpen('keluar'),
-style: ElevatedButton.styleFrom(
-backgroundColor: Colors.orange,
-foregroundColor: Colors.white,
-padding: const EdgeInsets.symmetric(vertical: 12),
-shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-),
-icon: const Icon(IconlyLight.logout, size: 16),
-label: const Text('Gate Keluar',
-style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-),
-),
-],
-),
-],
-),
-);
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      boxShadow: AppTheme.subtleShadow,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: const [
+            Icon(IconlyLight.danger, color: Colors.orange, size: 18),
+            SizedBox(width: 8),
+            Text(
+              'Emergency Override',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.orange,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Aksi di bawah ini akan membuka gerbang secara paksa dan dicatat sebagai aksi darurat.',
+          style: TextStyle(fontSize: 12, color: AppTheme.slate500),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _handleEmergencyOpen('masuk'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(IconlyLight.login, size: 16),
+                label: const Text('Gate Masuk',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _handleEmergencyOpen('keluar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(IconlyLight.logout, size: 16),
+                label: const Text('Gate Keluar',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        const Divider(height: 1),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Colors.orange,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Tamu Darurat Aktif di Kampus',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: AppTheme.slate800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        FutureBuilder<Response>(
+          future: ref.read(dioProvider).get('gate/emergency-guests'),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+                  ),
+                ),
+              );
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return const Text(
+                'Gagal memuat daftar tamu',
+                style: TextStyle(fontSize: 11, color: Colors.red),
+              );
+            }
+            final list = snapshot.data!.data as List<dynamic>;
+            if (list.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: AppTheme.slate50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Center(
+                  child: Text(
+                    'Tidak ada tamu darurat aktif',
+                    style: TextStyle(fontSize: 11, color: AppTheme.slate400, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              );
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: list.length,
+              itemBuilder: (context, index) {
+                final item = list[index];
+                final nama = item['nama'] ?? '';
+                final plat = item['plat_nomor'] ?? '';
+                final alasan = item['alasan'] ?? '';
+                
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.withOpacity(0.15)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nama,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.slate800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Alasan: $alasan',
+                              style: const TextStyle(fontSize: 10, color: AppTheme.slate500),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                        ),
+                        child: Text(
+                          plat,
+                          style: const TextStyle(
+                            fontFamily: 'Courier',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    ),
+  );
 }
 
 Widget _buildCameraSection({required bool isDesktop}) {
@@ -1988,6 +2111,7 @@ child: const Icon(Icons.image_not_supported, size: 16, color: Colors.white24),
 
 @override
 Widget build(BuildContext context) {
+ref.watch(refreshTriggerProvider); // Auto rebuild on WS / global trigger
 final chartAsync = ref.watch(activityChartProvider);
 final size = MediaQuery.of(context).size;
 final isDesktop = size.width >= 900;

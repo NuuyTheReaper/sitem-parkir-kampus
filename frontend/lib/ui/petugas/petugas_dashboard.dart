@@ -30,6 +30,13 @@ final res = await ref.read(dioProvider).get('petugas/activity-chart');
 return res.data as List<dynamic>;
 });
 
+// Provider for active emergency guests (tamu darurat aktif)
+final activeEmergencyGuestsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  ref.watch(refreshTriggerProvider); // Auto-refresh when triggered
+  final res = await ref.read(dioProvider).get('gate/emergency-guests');
+  return res.data as List<dynamic>;
+});
+
 class PetugasDashboard extends ConsumerStatefulWidget {
 const PetugasDashboard({super.key});
 
@@ -609,7 +616,7 @@ WebSocketChannel? channel;
 final List<Map<String, dynamic>> logs = [];
 String? _cameraUrl;
 bool _showCamera = false;
-bool _isEmergencyExpanded = false;
+bool _isEmergencyExpanded = true;
 String _cameraType = 'ip_camera';
 final _cameraController = WebCameraController();
 
@@ -1395,6 +1402,8 @@ Widget _buildEmergencySectionCard() {
 }
 
 Widget _buildActiveEmergencyGuestsList() {
+  final guestsAsync = ref.watch(activeEmergencyGuestsProvider);
+
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1420,28 +1429,22 @@ Widget _buildActiveEmergencyGuestsList() {
         ],
       ),
       const SizedBox(height: 12),
-      FutureBuilder<Response>(
-        future: ref.read(dioProvider).get('gate/emergency-guests'),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
-                ),
-              ),
-            );
-          }
-          if (snapshot.hasError || !snapshot.hasData) {
-            return const Text(
-              'Gagal memuat daftar tamu',
-              style: TextStyle(fontSize: 11, color: Colors.red),
-            );
-          }
-          final list = snapshot.data!.data as List<dynamic>;
+      guestsAsync.when(
+        loading: () => const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+            ),
+          ),
+        ),
+        error: (err, stack) => Text(
+          'Gagal memuat daftar tamu: $err',
+          style: const TextStyle(fontSize: 11, color: Colors.red),
+        ),
+        data: (list) {
           if (list.isEmpty) {
             return Container(
               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1458,63 +1461,66 @@ Widget _buildActiveEmergencyGuestsList() {
               ),
             );
           }
-          return ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: list.length,
-            itemBuilder: (context, index) {
-              final item = list[index];
-              final nama = item['nama'] ?? '';
-              final plat = item['plat_nomor'] ?? '';
-              final alasan = item['alasan'] ?? '';
-              
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.orange.withOpacity(0.15)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            nama,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.slate800),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Alasan: $alasan',
-                            style: const TextStyle(fontSize: 10, color: AppTheme.slate500),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.orange.withOpacity(0.2)),
-                      ),
-                      child: Text(
-                        plat,
-                        style: const TextStyle(
-                          fontFamily: 'Courier',
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
+          return ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180),
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: list.length,
+              itemBuilder: (context, index) {
+                final item = list[index];
+                final nama = item['nama'] ?? '';
+                final plat = item['plat_nomor'] ?? '';
+                final alasan = item['alasan'] ?? '';
+                
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.withOpacity(0.15)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nama,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.slate800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Alasan: $alasan',
+                              style: const TextStyle(fontSize: 10, color: AppTheme.slate500),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                        ),
+                        child: Text(
+                          plat,
+                          style: const TextStyle(
+                            fontFamily: 'Courier',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           );
         },
       ),

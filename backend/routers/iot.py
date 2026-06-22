@@ -100,6 +100,9 @@ petugas_notifier = PetugasNotificationManager()
 # Format: {"GATE_MASUK_1": {"plate": "G5090DB", "confidence": 0.95, "timestamp": ...}}
 _ml_plate_buffer: dict[str, dict] = {}
 
+# State variable for physical gate trigger (manually triggered via petugas response / emergency action)
+local_servo_trigger: int = 0
+
 # Coordination maps to handle frontend-triggered webcam capture on RFID tap
 # Key: rfid_uid, Value: asyncio.Event
 _pending_captures: dict[str, asyncio.Event] = {}
@@ -1097,3 +1100,28 @@ def proxy_camera_stream(camera_url: str):
         generate_frames(), 
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ENDPOINTS: Local HTTP Gate Trigger (Bypass Firebase for ESP8266)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/check-trigger")
+async def check_gate_trigger():
+    """
+    Called by ESP8266 via fast HTTP GET polling to check if gate should be opened.
+    Returns: {"trigger": 1} if remote manual open is requested, otherwise {"trigger": 0}
+    """
+    global local_servo_trigger
+    return {"trigger": local_servo_trigger}
+
+
+@router.post("/reset-trigger")
+async def reset_gate_trigger():
+    """
+    Called by ESP8266 via HTTP POST after receiving a trigger to reset back to 0.
+    """
+    global local_servo_trigger
+    local_servo_trigger = 0
+    logger.info("[HTTP Trigger] Reset local_servo_trigger to 0")
+    return {"status": "success", "trigger": local_servo_trigger}

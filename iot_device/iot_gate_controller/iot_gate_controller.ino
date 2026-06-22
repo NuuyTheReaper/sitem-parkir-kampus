@@ -12,7 +12,7 @@
   
   Pin Connection Guide:
   - MFRC522 RFID:
-    * RST  -> D3 (GPIO 0)
+    * RST  -> RX (GPIO 3)
     * SDA  -> D8 (GPIO 15)
     * MOSI -> D7 (GPIO 13)
     * MISO -> D6 (GPIO 12)
@@ -32,7 +32,7 @@
     * Positive -> D0 (GPIO 16)
     * Negative -> GND
   - Push Button:
-    * Pin      -> D9 (GPIO 3 / RX) - Catatan: Bisa disesuaikan ke pin lain jika ada bentrok Serial
+    * Pin      -> D3 (GPIO 0)
     * Pin lain -> GND
   ====================================================================
 */
@@ -52,20 +52,20 @@
 const char* ssid = "Makoto.wifi";          // Ganti dengan nama Wi-Fi Anda
 const char* password = "harisabtu";  // Ganti dengan password Wi-Fi Anda
 
-// --- Konfigurasi Backend & Firebase ---
+// --- Konfigurasi Backend ---
 // Gunakan IP Address lokal atau domain hosted
-const String backendUrl = "https://parkirkampus.my.id/api/gate/capture-validate";
-const String firebaseHost = "parking-system-2546df-default-rtdb.firebaseio.com";
-const String firebaseSecret = "lwFhrCtxQwicVlNIuitXN98Dup4ESSdYSXKSKMdn";
+const String backendUrl = "http://parkirkampus.my.id/api/gate/capture-validate";
+const String checkTriggerUrl = "http://parkirkampus.my.id/api/gate/check-trigger";
+const String resetTriggerUrl = "http://parkirkampus.my.id/api/gate/reset-trigger";
 
 // --- Definisikan PIN ---
-#define PIN_RST          0  // D3
+#define PIN_RST          3  // RX (GPIO 3) - RFID Reset
 #define PIN_SDA          15 // D8
 #define PIN_SERVO        2  // D4 (Membuka gerbang pada pin D4)
 #define PIN_BUZZER       16 // D0 (GPIO 16) - Buzzer indikator
 #define PIN_SDA_LCD      4  // D2 (GPIO 4) - I2C SDA untuk LCD
 #define PIN_SCL_LCD      5  // D1 (GPIO 5) - I2C SCL untuk LCD
-#define PIN_BUTTON       3  // D9 (GPIO 3 / RX) - Tombol Pilihan Mode (Active-low dengan PULLUP)
+#define PIN_BUTTON       0  // D3 (GPIO 0) - Tombol Pilihan Mode (Active-low dengan PULLUP)
 
 // --- Konfigurasi LCD I2C ---
 #define LCD_ADDR         0x27 // Alamat I2C umum (0x27 atau 0x3F)
@@ -78,22 +78,20 @@ Servo gateServo;
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 
 // --- Variabel State ---
-enum GateMode { MODE_MASUK, MODE_KELUAR, MODE_DAFTAR };
+enum GateMode { MODE_MASUK, MODE_KELUAR, MODE_DARURAT, MODE_DAFTAR };
 GateMode currentMode = MODE_MASUK; // Default mode: Masuk
 
-// Variabel untuk Button Debounce & Click Counter
-int buttonState = HIGH;
-int lastButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 50;
-unsigned long lastClickTime = 0;
-const unsigned long clickWindow = 800; // Window waktu untuk deteksi multi-click (ms)
-int clickCount = 0;
+// Variabel untuk Button (Interrupt-driven)
+volatile bool shortClick = false;
+volatile bool isHolding = false;
+volatile unsigned long pressStartTime = 0;
+volatile unsigned long lastInterruptTime = 0;
+unsigned long lastButtonPressTime = 0; // Menunda Firebase check saat tombol aktif
 bool wasConnected = false;
 
-// Variabel untuk Firebase polling interval (non-blocking)
-unsigned long lastFirebaseCheck = 0;
-const unsigned long firebaseCheckInterval = 3000; // Cek setiap 3 detik
+// Variabel untuk Backend HTTP polling interval (non-blocking)
+unsigned long lastBackendCheck = 0;
+const unsigned long backendCheckInterval = 5000; // Cek setiap 5 detik
 
 // --- Fungsi Indikator Buzzer ---
 void beepTap() {
@@ -128,8 +126,13 @@ void beepWiFiConnected() {
   }
 }
 
+// Prototype fungsi interupsi
+void IRAM_ATTR handleButtonISR();
+
 void setup() {
-  Serial.begin(115200);
+  // Menggunakan SERIAL_TX_ONLY agar pin RX (GPIO 3 / D9) dibebaskan untuk input digital button.
+  // Input Serial (simulasi tombol) tidak akan berfungsi, namun output log Serial tetap berjalan.
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
   SPI.begin();
   mfrc522.PCD_Init();
   
@@ -141,8 +144,9 @@ void setup() {
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
 
-  // Setup Pin Mode Button
+  // Setup Pin Mode Button & Interrupt (CHANGE)
   pinMode(PIN_BUTTON, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), handleButtonISR, CHANGE);
 
   // Setup LCD I2C
   Wire.begin(PIN_SDA_LCD, PIN_SCL_LCD);
@@ -205,10 +209,10 @@ void loop() {
   // 3. Baca RFID Card jika ada kartu yang di-tap
   bool cardProcessed = handleRfidInput();
 
-  // 4. Cek Firebase Trigger secara berkala (non-blocking)
-  if (!cardProcessed && (millis() - lastFirebaseCheck >= firebaseCheckInterval)) {
-    lastFirebaseCheck = millis();
-    checkFirebaseTrigger();
+  // 4. Cek Backend Trigger secara berkala (hanya jika tidak ada aktivitas tombol/RFID baru-baru ini)
+  if (!cardProcessed && (millis() - lastButtonPressTime >= 10000) && (millis() - lastBackendCheck >= backendCheckInterval)) {
+    lastBackendCheck = millis();
+    checkBackendTrigger();
   }
 }
 
@@ -267,21 +271,28 @@ void updateLedIndicators() {
     lcd.print("Gate: MASUK");
     lcd.setCursor(0, 1);
     lcd.print("Silakan Tap...");
-    Serial.println("[MODE] Masuk (1x click) - SIAP TAP");
+    Serial.println("[MODE] Masuk (Mode 1) - SIAP TAP");
   } 
   else if (currentMode == MODE_KELUAR) {
     lcd.setCursor(0, 0);
     lcd.print("Gate: KELUAR");
     lcd.setCursor(0, 1);
     lcd.print("Silakan Tap...");
-    Serial.println("[MODE] Keluar (2x click) - SIAP TAP");
+    Serial.println("[MODE] Keluar (Mode 2) - SIAP TAP");
   } 
+  else if (currentMode == MODE_DARURAT) {
+    lcd.setCursor(0, 0);
+    lcd.print("Gate: DARURAT");
+    lcd.setCursor(0, 1);
+    lcd.print("Gerbang Terbuka!");
+    Serial.println("[MODE] Darurat (Mode 3) - GERBANG TERBUKA");
+  }
   else if (currentMode == MODE_DAFTAR) {
     lcd.setCursor(0, 0);
     lcd.print("Mode: DAFTAR");
     lcd.setCursor(0, 1);
     lcd.print("Tempel Kartu...");
-    Serial.println("[MODE] Daftar Kartu Baru (4x click) - SIAP TAP");
+    Serial.println("[MODE] Daftar Kartu Baru (Mode 4) - SIAP TAP");
   }
 }
 
@@ -294,27 +305,65 @@ void openGate() {
   gateServo.write(0);  // Tutup kembali gerbang ke 0 derajat
 }
 
-// Fungsi mendeteksi input button (1x Masuk, 2x Keluar, 3x Darurat, 4x Daftar)
-void handleButtonInput() {
-  // 1. Baca Input Tombol Fisik dengan Debouncing
-  int reading = digitalRead(PIN_BUTTON);
-  if (reading != lastButtonState) {
-    lastDebounceTime = millis();
-  }
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading != buttonState) {
-      buttonState = reading;
-      if (buttonState == LOW) { // Tombol ditekan (Active-low)
-        clickCount++;
-        lastClickTime = millis();
-        Serial.print("[TOMBOL] Klik fisik ke-");
-        Serial.println(clickCount);
+// Fungsi ISR untuk membaca tombol secara asynchronous (CHANGE)
+void IRAM_ATTR handleButtonISR() {
+  int pinVal = digitalRead(PIN_BUTTON);
+  unsigned long now = millis();
+  
+  if (pinVal == LOW) { // Pressed
+    if (!isHolding && (now - lastInterruptTime > 50)) { // Debounce press
+      isHolding = true;
+      pressStartTime = now;
+      lastInterruptTime = now;
+    }
+  } else { // Released
+    if (isHolding) {
+      unsigned long duration = now - pressStartTime;
+      isHolding = false;
+      lastInterruptTime = now;
+      if (duration > 50 && duration < 2000) { // Rentang klik pendek (50ms - 2s)
+        shortClick = true;
       }
     }
   }
-  lastButtonState = reading;
+}
 
-  // 2. Simulasikan button menggunakan Serial input
+// Fungsi mendeteksi input button (Siklus/Rotasi: Masuk -> Keluar -> Daftar -> Masuk)
+// Serta long press 5 detik untuk memicu Mode Darurat
+void handleButtonInput() {
+  unsigned long now = millis();
+
+  // 1. Deteksi Long Press 5 Detik (Mode Darurat) dari Mode Mana Saja
+  if (isHolding && (now - pressStartTime >= 5000)) {
+    isHolding = false; // Reset status hold agar tidak memicu berulang kali
+    shortClick = false; // Batalkan antrean klik pendek jika ada
+    lastButtonPressTime = now; // Tunda Firebase check
+    
+    currentMode = MODE_DARURAT;
+    updateLedIndicators();
+    triggerEmergencyLocal();
+  }
+
+  // 2. Deteksi Short Click (Rotasi Mode: Masuk -> Keluar -> Daftar -> Masuk)
+  if (shortClick) {
+    shortClick = false; // Reset flag
+    lastButtonPressTime = now; // Tunda Firebase check
+    
+    // Rotasi mode (melewati Darurat karena Darurat menggunakan Long Press)
+    if (currentMode == MODE_MASUK) {
+      currentMode = MODE_KELUAR;
+    } else if (currentMode == MODE_KELUAR) {
+      currentMode = MODE_DAFTAR;
+    } else if (currentMode == MODE_DARURAT) {
+      currentMode = MODE_DAFTAR;
+    } else if (currentMode == MODE_DAFTAR) {
+      currentMode = MODE_MASUK;
+    }
+    
+    updateLedIndicators();
+  }
+
+  // 3. Simulasikan button menggunakan Serial input
   if (Serial.available() > 0) {
     char c = Serial.read();
     
@@ -325,63 +374,42 @@ void handleButtonInput() {
       Serial.println("'");
 
       if (c == 'c' || c == 'C') {
-        // Simulasikan satu klik tombol
-        clickCount++;
-        lastClickTime = millis();
-        Serial.print("[SIMULASI] Klik ke-");
-        Serial.println(clickCount);
+        // Simulasikan klik pendek
+        shortClick = true;
+      }
+      else if (c == 'l' || c == 'L') {
+        // Simulasikan tekan lama (5 detik)
+        isHolding = true;
+        pressStartTime = now - 5000; // Set agar langsung terdeteksi long press di loop berikutnya
       }
       else if (c == '1') {
-        // Langsung pindah ke Mode Masuk
         currentMode = MODE_MASUK;
         updateLedIndicators();
       }
       else if (c == '2') {
-        // Langsung pindah ke Mode Keluar
         currentMode = MODE_KELUAR;
         updateLedIndicators();
       }
       else if (c == '3') {
-        // Langsung picu Darurat (Buka Gerbang)
-        Serial.println("[DARURAT] Gerbang Darurat Diaktifkan via Serial!");
+        currentMode = MODE_DARURAT;
+        updateLedIndicators();
         triggerEmergencyLocal();
       }
       else if (c == '4') {
-        // Langsung pindah ke Mode Daftar
         currentMode = MODE_DAFTAR;
         updateLedIndicators();
       }
       else {
         Serial.println("--- Panduan Serial Command ---");
-        Serial.println(" 'c' : Simulasikan 1x klik button (bisa diketik beberapa kali dengan cepat)");
+        Serial.println(" 'c' : Simulasikan klik pendek tombol");
+        Serial.println(" 'l' : Simulasikan tekan lama (5 detik)");
         Serial.println(" '1' : Set MODE_MASUK");
         Serial.println(" '2' : Set MODE_KELUAR");
-        Serial.println(" '3' : Set DARURAT (Buka Gerbang)");
+        Serial.println(" '3' : Set MODE_DARURAT");
         Serial.println(" '4' : Set MODE_DAFTAR");
         Serial.println("-----------------------------");
       }
     }
-  }
-
-  // Evaluasi jumlah klik setelah melewati window waktu
-  if (clickCount > 0 && (millis() - lastClickTime) > clickWindow) {
-    if (clickCount == 1) {
-      currentMode = MODE_MASUK;
-      updateLedIndicators();
-    } 
-    else if (clickCount == 2) {
-      currentMode = MODE_KELUAR;
-      updateLedIndicators();
-    } 
-    else if (clickCount == 3) {
-      Serial.println("[DARURAT] Gerbang Darurat Diaktifkan via Multi-Click Simulasi!");
-      triggerEmergencyLocal();
-    }
-    else if (clickCount >= 4) {
-      currentMode = MODE_DAFTAR;
-      updateLedIndicators();
-    }
-    clickCount = 0; // Reset counter klik
   }
 }
 
@@ -456,6 +484,12 @@ void sendValidationRequest(String uid) {
   WiFiClientSecure clientSecure;
   HTTPClient http;
   
+  Serial.print("[MEMORI] Free heap sebelum backend POST: ");
+  Serial.print(ESP.getFreeHeap());
+  Serial.print(" B | WiFi RSSI: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+
   Serial.println("[HTTP] Mengirim data ke backend...");
   if (backendUrl.startsWith("https://")) {
     clientSecure.setInsecure();
@@ -590,6 +624,12 @@ void sendRegistrationRequest(String uid) {
   String regUrl = backendUrl;
   regUrl.replace("/capture-validate", "/register-tap?rfid_uid=" + uid);
   
+  Serial.print("[MEMORI] Free heap sebelum backend reg POST: ");
+  Serial.print(ESP.getFreeHeap());
+  Serial.print(" B | WiFi RSSI: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+
   Serial.print("[HTTP] Mengirim pendaftaran kartu ke: ");
   Serial.println(regUrl);
   
@@ -639,44 +679,55 @@ void sendRegistrationRequest(String uid) {
   http.end();
 }
 
-// Fungsi membaca trigger gerbang dari Firebase Realtime Database
-void checkFirebaseTrigger() {
-  WiFiClientSecure client;
-  client.setInsecure(); // ESP8266 mengabaikan verifikasi SSL certificate
+// Fungsi membaca trigger gerbang dari Backend via HTTP biasa (Bypass Firebase)
+void checkBackendTrigger() {
+  WiFiClient client;
   HTTPClient http;
-
-  String url = "https://" + firebaseHost + "/gate/servo_trigger.json";
-  if (firebaseSecret != "") {
-    url += "?auth=" + firebaseSecret;
-  }
-
-  http.begin(client, url);
+  
+  Serial.print("[MEMORI] Free heap sebelum Backend GET: ");
+  Serial.print(ESP.getFreeHeap());
+  Serial.print(" B | WiFi RSSI: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+  
+  http.begin(client, checkTriggerUrl);
+  http.setTimeout(1000); // Batasi timeout ke 1 detik
   int httpResponseCode = http.GET();
-
+  
   if (httpResponseCode == 200) {
     String response = http.getString();
-    int triggerValue = response.toInt();
-
-    if (triggerValue == 1) {
-      Serial.println("[FIREBASE] Sinyal Buka Gerbang Diterima!");
-      
-      // Reset trigger ke 0 DULU sebelum membuka gerbang,
-      // untuk menghemat memori (heap RAM) dengan menggunakan objek koneksi yang sama.
-      http.end(); // Tutup sesi GET
-      
-      http.begin(client, url); // Buka kembali menggunakan objek client yang sama
-      http.addHeader("Content-Type", "application/json");
-      int putCode = http.PUT("0");
-      if (putCode == 200) {
-        Serial.println("[FIREBASE] Trigger berhasil di-reset kembali ke 0.");
-      } else {
-        Serial.print("[FIREBASE] Gagal mereset trigger: HTTP ");
-        Serial.println(putCode);
+    
+    // Parse JSON response: {"trigger": 1} or {"trigger": 0}
+    StaticJsonDocument<100> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      int triggerValue = doc["trigger"];
+      if (triggerValue == 1) {
+        Serial.println("[HTTP TRIGGER] Sinyal Buka Gerbang Diterima!");
+        http.end(); // Akhiri GET
+        
+        // Reset trigger di backend kembali ke 0
+        http.begin(client, resetTriggerUrl);
+        http.setTimeout(1000);
+        int postCode = http.POST(""); // POST kosong untuk reset
+        if (postCode == 200) {
+          Serial.println("[HTTP TRIGGER] Trigger berhasil di-reset kembali ke 0.");
+        } else {
+          Serial.print("[HTTP TRIGGER] Gagal mereset trigger: HTTP ");
+          Serial.println(postCode);
+        }
+        http.end();
+        
+        // Buka Gerbang setelah reset berhasil
+        openGate();
       }
-      
-      // Buka Gerbang setelah trigger di-reset (menghindari delay blocking mempengaruhi reset)
-      openGate();
+    } else {
+      Serial.print("[HTTP TRIGGER] Gagal mengurai JSON: ");
+      Serial.println(error.c_str());
     }
+  } else {
+    Serial.print("[HTTP TRIGGER] HTTP GET gagal, error code: ");
+    Serial.println(httpResponseCode);
   }
-  http.end();
+  http.end(); // Selalu tutup koneksi secara bersih
 }

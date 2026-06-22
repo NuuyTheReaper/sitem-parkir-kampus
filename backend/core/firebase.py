@@ -5,9 +5,17 @@ async def trigger_physical_servo():
     """
     Mengirimkan sinyal ke Firebase Realtime Database untuk memicu ESP32 membuka gerbang fisik.
     """
+    # Set the local trigger first to ensure it's updated immediately for HTTP polling
+    try:
+        from routers import iot
+        iot.local_servo_trigger = 1
+        print("[Firebase Helper] ✅ local_servo_trigger set to 1")
+    except Exception as e:
+        print(f"[Firebase Helper] ❌ Error setting local_servo_trigger: {e}")
+
     if not settings.FIREBASE_DB_URL:
-        print("[Firebase Helper] Warning: FIREBASE_DB_URL tidak diatur di backend.")
-        return False
+        print("[Firebase Helper] Warning: FIREBASE_DB_URL tidak diatur di backend. Menggunakan HTTP trigger saja.")
+        return True
         
     url = f"{settings.FIREBASE_DB_URL.rstrip('/')}/gate/servo_trigger.json"
     params = {}

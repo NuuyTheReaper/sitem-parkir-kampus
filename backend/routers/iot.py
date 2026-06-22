@@ -15,9 +15,17 @@ Alur Validasi Ganda:
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile, Form
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import asyncio
 import logging
+
+def to_jakarta_time(dt: datetime) -> datetime:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    jakarta_tz = timezone(timedelta(hours=7))
+    return dt.astimezone(jakarta_tz)
 import httpx
 import os
 
@@ -162,7 +170,7 @@ async def receive_ml_plate_detection(request: MLPlateDetectionRequest, db: Sessi
         "plate": request.detected_plate,
         "confidence": request.confidence,
         "image_path": request.image_path,
-        "timestamp": request.timestamp or datetime.now(timezone.utc),
+        "timestamp": to_jakarta_time(request.timestamp or datetime.now(timezone.utc)),
     }
     
     logger.info(
@@ -715,7 +723,7 @@ async def _run_dual_validation(
         ),
         "user": user.nama,
         "plate": target_vehicle.plat_nomor,
-        "time": log.waktu.isoformat(),
+        "time": to_jakarta_time(log.waktu).isoformat(),
         "gate": request.gate_id,
         "image_path": image_path,
     })
@@ -790,7 +798,7 @@ async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)
         "message": f"Akses {scan.gate_type} diizinkan otomatis.",
         "user": user.nama,
         "plate": target_vehicle.plat_nomor,
-        "time": log.waktu.isoformat()
+        "time": to_jakarta_time(log.waktu).isoformat()
     })
     
     return {"action": "open_gate", "message": "Access granted"}
@@ -876,7 +884,7 @@ async def emergency_gate_action(
                     user_id=registered_user.id,
                     vehicle_id=registered_vehicle.id,
                     jenis_aktivitas=gate,
-                    status_akses=models.AccessStatusEnum.manual_petugas
+                    status_akses=models.AccessStatusEnum.darurat
                 )
                 db.add(new_log)
                 db.commit()
@@ -971,7 +979,7 @@ async def emergency_gate_action(
             vehicle_id=1,  # Dummy vehicle ID
             emergency_guest_id=guest_id_to_log,
             jenis_aktivitas=gate,
-            status_akses=models.AccessStatusEnum.manual_petugas
+            status_akses=models.AccessStatusEnum.darurat
         )
         db.add(new_log)
         db.commit()
@@ -1002,7 +1010,7 @@ def get_emergency_guests(db: Session = Depends(get_db), current_user: models.Use
             "nama": g.nama,
             "plat_nomor": g.plat_nomor,
             "alasan": g.alasan,
-            "waktu_masuk": g.waktu_masuk.isoformat()
+            "waktu_masuk": to_jakarta_time(g.waktu_masuk).isoformat()
         } for g in guests
     ]
 

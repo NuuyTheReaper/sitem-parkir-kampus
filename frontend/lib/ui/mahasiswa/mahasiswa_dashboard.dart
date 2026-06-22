@@ -676,9 +676,18 @@ class _StatusTabState extends ConsumerState<StatusTab> {
                                     ],
                                   ),
                                   const SizedBox(height: 2),
-                                  Text(r['waktu_request'] ?? '',
-                                      style: const TextStyle(
-                                          fontSize: 11, color: Colors.grey)),
+                                  Text(
+                                    () {
+                                      if (r['waktu_request'] == null) return '';
+                                      try {
+                                        final date = DateTime.parse(r['waktu_request'].toString()).toLocal();
+                                        return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                                      } catch (e) {
+                                        return r['waktu_request'].toString();
+                                      }
+                                    }(),
+                                    style: const TextStyle(
+                                        fontSize: 11, color: Colors.grey)),
                                   if (r['catatan'] != null &&
                                       r['catatan'].toString().isNotEmpty) ...[
                                     const SizedBox(height: 4),
@@ -1450,18 +1459,27 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Colors.grey[100],
+                              color: log['status_akses'] == 'darurat'
+                                  ? Colors.red[50]
+                                  : log['status_akses'] == 'manual_petugas'
+                                      ? const Color(0xFFFFF3CC)
+                                      : Colors.grey[100],
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              log['status_akses']
-                                  .toString()
-                                  .replaceAll('_', ' ')
-                                  .toUpperCase(),
+                              log['status_akses'] == 'darurat'
+                                  ? 'EMERGENCY GATE'
+                                  : log['status_akses'] == 'manual_petugas'
+                                      ? 'MANUAL PETUGAS'
+                                      : 'OTOMATIS',
                               style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.grey[600]),
+                                  color: log['status_akses'] == 'darurat'
+                                      ? Colors.red[700]
+                                      : log['status_akses'] == 'manual_petugas'
+                                          ? const Color(0xFF8B6914)
+                                          : Colors.grey[600]),
                             ),
                           ),
                         ],

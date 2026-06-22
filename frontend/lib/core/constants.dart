@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 
 class AppConstants {
   // Local Development (Commented out for production)
-  // static const String baseUrl = 'http://localhost:8000/api/';
-  // static const String uploadBaseUrl = 'http://localhost:8000';
-  // static const String wsUrl = 'ws://localhost:8000/api/gate/monitor/live';
-  // static const String wsNotifUrl = 'ws://localhost:8000/api/gate/petugas/notifications';
+  // static const String baseUrl = 'http://192.168.1.6:8000/api/';
+  // static const String uploadBaseUrl = 'http://192.168.1.6:8000';
+  // static const String wsUrl = 'ws://192.168.1.6:8000/api/gate/monitor/live';
+  // static const String wsNotifUrl = 'ws://192.168.1.6:8000/api/gate/petugas/notifications';
 
   // Hosted/Production
   static const String baseUrl = 'https://parkirkampus.my.id/api/';

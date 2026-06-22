@@ -3010,9 +3010,18 @@ label: r['rfid_uid'] ?? 'No RFID')),
 Padding(
 padding: const EdgeInsets.only(top: 6),
 child: Text(
-'🕐 ${r['waktu_request'] ?? '-'}',
-style:
-const TextStyle(fontSize: 11, color: Colors.grey),
+  () {
+    if (r['waktu_request'] == null) return 'I\u0304 -'; // Fallback
+    try {
+      final date = DateTime.parse(r['waktu_request'].toString()).toLocal();
+      final formatted =
+          '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return '🕐 $formatted';
+    } catch (e) {
+      return '🕐 ${r['waktu_request']}';
+    }
+  }(),
+  style: const TextStyle(fontSize: 11, color: Colors.grey),
 ),
 ),
 const Divider(height: 20),

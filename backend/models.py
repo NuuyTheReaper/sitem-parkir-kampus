@@ -26,6 +26,7 @@ class ActivityTypeEnum(str, enum.Enum):
 class AccessStatusEnum(str, enum.Enum):
     otomatis = "otomatis"
     manual_petugas = "manual_petugas"
+    darurat = "darurat"
 
 # --- Models ---
 class User(Base):

@@ -11,6 +11,14 @@ from database import get_db
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 
+def to_jakarta_time(dt: datetime) -> datetime:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    jakarta_tz = timezone(timedelta(hours=7))
+    return dt.astimezone(jakarta_tz)
+
 router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(get_admin)])
 
 # ── Timer: Auto-expire pending requests older than 10 minutes ──
@@ -273,7 +281,12 @@ def get_parking_reports(db: Session = Depends(get_db)):
             vehicle_plat = vehicle.plat_nomor if vehicle else "-"
             vehicle_jenis = vehicle.jenis_kendaraan if vehicle else "-"
             
-        status_akses_display = "Emergency gate" if log.status_akses == models.AccessStatusEnum.manual_petugas else log.status_akses
+        if log.status_akses == models.AccessStatusEnum.darurat:
+            status_akses_display = "Emergency gate"
+        elif log.status_akses == models.AccessStatusEnum.manual_petugas:
+            status_akses_display = "manual_petugas"
+        else:
+            status_akses_display = log.status_akses
         
         result.append({
             "id": log.id,
@@ -285,7 +298,7 @@ def get_parking_reports(db: Session = Depends(get_db)):
             "vehicle_jenis": vehicle_jenis,
             "jenis_aktivitas": log.jenis_aktivitas,
             "status_akses": status_akses_display,
-            "waktu": log.waktu.isoformat() if log.waktu else None,
+            "waktu": to_jakarta_time(log.waktu).isoformat() if log.waktu else None,
         })
     return result
 
@@ -305,17 +318,22 @@ def export_logs_csv(
         
     # Filter by periode
     if periode != "semua":
-        from datetime import datetime, timedelta, time
-        now = datetime.now()
-        today_start = datetime.combine(now.date(), time.min)
+        jakarta_tz = timezone(timedelta(hours=7))
+        now_utc = datetime.now(timezone.utc)
+        now_jakarta = now_utc.astimezone(jakarta_tz)
+        today_start_jakarta = now_jakarta.replace(hour=0, minute=0, second=0, microsecond=0)
+        
         if periode == "hari_ini":
-            query = query.filter(models.ParkingLog.waktu >= today_start)
+            start_date_utc = today_start_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
+            query = query.filter(models.ParkingLog.waktu >= start_date_utc)
         elif periode == "7_hari":
-            start_date = today_start - timedelta(days=6)
-            query = query.filter(models.ParkingLog.waktu >= start_date)
+            start_date_jakarta = today_start_jakarta - timedelta(days=6)
+            start_date_utc = start_date_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
+            query = query.filter(models.ParkingLog.waktu >= start_date_utc)
         elif periode == "30_hari":
-            start_date = today_start - timedelta(days=29)
-            query = query.filter(models.ParkingLog.waktu >= start_date)
+            start_date_jakarta = today_start_jakarta - timedelta(days=29)
+            start_date_utc = start_date_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
+            query = query.filter(models.ParkingLog.waktu >= start_date_utc)
 
     logs = query.order_by(models.ParkingLog.waktu.desc()).limit(1000).all()
     
@@ -338,7 +356,14 @@ def export_logs_csv(
             vehicle_plat = vehicle.plat_nomor if vehicle else "-"
             vehicle_jenis = vehicle.jenis_kendaraan if vehicle else "-"
             
-        status_akses_display = "Emergency gate" if log.status_akses == models.AccessStatusEnum.manual_petugas else log.status_akses
+        if log.status_akses == models.AccessStatusEnum.darurat:
+            status_akses_display = "Emergency gate"
+        elif log.status_akses == models.AccessStatusEnum.manual_petugas:
+            status_akses_display = "Manual"
+        elif log.status_akses == models.AccessStatusEnum.otomatis:
+            status_akses_display = "Otomatis"
+        else:
+            status_akses_display = log.status_akses
         
         writer.writerow([
             idx,
@@ -346,9 +371,9 @@ def export_logs_csv(
             user_nim,
             vehicle_plat,
             vehicle_jenis,
-            log.jenis_aktivitas,
+            log.waktu.jenis_aktivitas if False else log.jenis_aktivitas, # Dummy to keep compile
             status_akses_display,
-            log.waktu.strftime("%Y-%m-%d %H:%M:%S") if log.waktu else "-",
+            to_jakarta_time(log.waktu).strftime("%Y-%m-%d %H:%M:%S") if log.waktu else "-",
         ])
     
     output.seek(0)
@@ -400,7 +425,7 @@ async def send_broadcast(req: BroadcastRequest, db: Session = Depends(get_db), c
         "type": "announcement",
         "message": req.message,
         "sender": current_user.nama,
-        "time": announcement.created_at.isoformat()
+        "time": to_jakarta_time(announcement.created_at).isoformat()
     })
     
     return {"status": "success", "message": "Broadcast terkirim", "id": announcement.id}

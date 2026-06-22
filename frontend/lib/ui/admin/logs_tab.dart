@@ -349,7 +349,8 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                 itemBuilder: (context, index) {
                   final log = logs[index];
                   final isMasuk = log['jenis_aktivitas'] == 'masuk';
-                  final isManual = log['status_akses'] == 'manual_petugas' || log['status_akses'] == 'Emergency gate';
+                  final isManual = log['status_akses'] == 'manual_petugas' || log['status_akses'] == 'Manual';
+                  final isDarurat = log['status_akses'] == 'darurat' || log['status_akses'] == 'Emergency gate';
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -396,7 +397,15 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  log['waktu']?.toString() ?? '-',
+                                  () {
+                                    if (log['waktu'] == null) return '-';
+                                    try {
+                                      final date = DateTime.parse(log['waktu'].toString()).toLocal();
+                                      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                                    } catch (e) {
+                                      return log['waktu'].toString();
+                                    }
+                                  }(),
                                   style: const TextStyle(
                                       fontSize: 11, color: Colors.grey),
                                   maxLines: 1,
@@ -410,21 +419,31 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: isManual
-                                  ? const Color(0xFFFFF3CC)
-                                  : Colors.blue[50],
+                              color: isDarurat
+                                  ? Colors.red[50]
+                                  : isManual
+                                      ? const Color(0xFFFFF3CC)
+                                      : Colors.blue[50],
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                  color: isManual
-                                      ? const Color(0xFFD4A843)
-                                      : Colors.blue.shade200),
+                                  color: isDarurat
+                                      ? Colors.red.shade200
+                                      : isManual
+                                          ? const Color(0xFFD4A843)
+                                          : Colors.blue.shade200),
                             ),
                             child: Text(
-                              isManual ? 'Emergency gate' : 'AUTO',
+                              isDarurat
+                                  ? 'Emergency gate'
+                                  : isManual
+                                      ? 'Manual'
+                                      : 'AUTO',
                               style: TextStyle(
-                                color: isManual
-                                    ? const Color(0xFF8B6914)
-                                    : Colors.blue[700],
+                                color: isDarurat
+                                    ? Colors.red[700]
+                                    : isManual
+                                        ? const Color(0xFF8B6914)
+                                        : Colors.blue[700],
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),

@@ -54,9 +54,9 @@ const char* password = "harisabtu";  // Ganti dengan password Wi-Fi Anda
 
 // --- Konfigurasi Backend ---
 // Gunakan IP Address lokal atau domain hosted
-const String backendUrl = "http://parkirkampus.my.id/api/gate/capture-validate";
-const String checkTriggerUrl = "http://parkirkampus.my.id/api/gate/check-trigger";
-const String resetTriggerUrl = "http://parkirkampus.my.id/api/gate/reset-trigger";
+const String backendUrl = "https://parkirkampus.my.id/api/gate/capture-validate";
+const String checkTriggerUrl = "https://parkirkampus.my.id/api/gate/check-trigger";
+const String resetTriggerUrl = "https://parkirkampus.my.id/api/gate/reset-trigger";
 
 // --- Definisikan PIN ---
 #define PIN_RST          3  // RX (GPIO 3) - RFID Reset

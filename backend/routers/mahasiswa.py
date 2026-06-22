@@ -8,7 +8,15 @@ import models
 from schemas.vehicle import VehicleCreate, VehicleResponse
 from core.security import get_mahasiswa
 from database import get_db
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+def to_jakarta_time(dt: datetime) -> datetime:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    jakarta_tz = timezone(timedelta(hours=7))
+    return dt.astimezone(jakarta_tz)
 
 router = APIRouter(prefix="/api/mahasiswa", tags=["Mahasiswa"], dependencies=[Depends(get_mahasiswa)])
 
@@ -102,7 +110,7 @@ def get_parking_status(current_user: models.User = Depends(get_mahasiswa), db: S
     status_str = "Sedang Parkir" if last_log.jenis_aktivitas == models.ActivityTypeEnum.masuk else "Di Luar Kampus"
     return {
         "status": status_str, 
-        "waktu_terakhir": last_log.waktu,
+        "waktu_terakhir": to_jakarta_time(last_log.waktu),
         "is_flagged": bool(current_user.is_flagged),
         "flag_reason": current_user.flag_reason
     }
@@ -166,8 +174,8 @@ def get_my_requests(current_user: models.User = Depends(get_mahasiswa), db: Sess
             "id": r.id,
             "jenis_aktivitas": r.jenis_aktivitas,
             "status": r.status,
-            "waktu_request": r.waktu_request.isoformat() if r.waktu_request else None,
-            "waktu_respon": r.waktu_respon.isoformat() if r.waktu_respon else None,
+            "waktu_request": to_jakarta_time(r.waktu_request).isoformat() if r.waktu_request else None,
+            "waktu_respon": to_jakarta_time(r.waktu_respon).isoformat() if r.waktu_respon else None,
             "catatan": r.catatan,
         })
     return result
@@ -183,7 +191,7 @@ def get_announcements(db: Session = Depends(get_db)):
         {
             "id": a.id,
             "message": a.message,
-            "created_at": a.created_at,
+            "created_at": to_jakarta_time(a.created_at),
             "sender": a.sender.nama
         }
         for a in anns
@@ -198,10 +206,10 @@ def get_parking_history(current_user: models.User = Depends(get_mahasiswa), db: 
     result = []
     for log in logs:
         vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
-        status_akses_display = "Emergency gate" if log.status_akses == models.AccessStatusEnum.manual_petugas else log.status_akses
+        status_akses_display = log.status_akses
         result.append({
             "id": log.id,
-            "waktu": log.waktu.isoformat() if log.waktu else None,
+            "waktu": to_jakarta_time(log.waktu).isoformat() if log.waktu else None,
             "jenis_aktivitas": log.jenis_aktivitas,
             "status_akses": status_akses_display,
             "plat_nomor": vehicle.plat_nomor if vehicle else "Unknown",

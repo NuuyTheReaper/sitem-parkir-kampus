@@ -6,6 +6,15 @@ import models
 from schemas.vehicle import VehicleResponse
 from core.security import get_petugas
 from database import get_db
+from datetime import datetime, timezone, timedelta
+
+def to_jakarta_time(dt: datetime) -> datetime:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    jakarta_tz = timezone(timedelta(hours=7))
+    return dt.astimezone(jakarta_tz)
 
 router = APIRouter(prefix="/api/petugas", tags=["Petugas"], dependencies=[Depends(get_petugas)])
 
@@ -53,7 +62,7 @@ def get_pending_access_requests(db: Session = Depends(get_db)):
                 "vehicle_plat": guest.plat_nomor if guest else "Unknown",
                 "vehicle_jenis": "Mobil/Motor",
                 "jenis_aktivitas": r.jenis_aktivitas,
-                "waktu_request": r.waktu_request.isoformat() if r.waktu_request else None,
+                "waktu_request": to_jakarta_time(r.waktu_request).isoformat() if r.waktu_request else None,
                 "is_flagged": False,
                 "flag_reason": None,
             })
@@ -69,7 +78,7 @@ def get_pending_access_requests(db: Session = Depends(get_db)):
                 "vehicle_plat": vehicle.plat_nomor if vehicle else "Unknown",
                 "vehicle_jenis": vehicle.jenis_kendaraan if vehicle else "Unknown",
                 "jenis_aktivitas": r.jenis_aktivitas,
-                "waktu_request": r.waktu_request.isoformat() if r.waktu_request else None,
+                "waktu_request": to_jakarta_time(r.waktu_request).isoformat() if r.waktu_request else None,
                 "is_flagged": user.is_flagged == 1 if user else False,
                 "flag_reason": user.flag_reason if user else None,
             })
@@ -140,7 +149,7 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
                 "message": f"Akses {req.jenis_aktivitas} disetujui manual.",
                 "user": display_name,
                 "plate": display_plate,
-                "time": datetime.now(timezone.utc).isoformat()
+                "time": to_jakarta_time(datetime.now(timezone.utc)).isoformat()
             })
         except Exception:
             pass
@@ -188,8 +197,11 @@ def search_members(query: str, db: Session = Depends(get_db)):
 @router.get("/session-stats")
 def get_session_stats(db: Session = Depends(get_db), current_user: models.User = Depends(get_petugas)):
     """Get stats of actions performed by the current officer today."""
-    from datetime import datetime, time, timezone
-    today_start = datetime.combine(datetime.now(timezone.utc).date(), time.min)
+    from datetime import datetime, timezone, timedelta
+    jakarta_tz = timezone(timedelta(hours=7))
+    now_jakarta = datetime.now(timezone.utc).astimezone(jakarta_tz)
+    today_start_jakarta = now_jakarta.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = today_start_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
     
     # AccessRequests handled by this officer (waktu_respon is when it was handled)
     # Note: we need to track WHICH officer handled it. 

@@ -5,6 +5,9 @@ import '../../core/app_theme.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/api_client.dart';
 import '../shared/filter_toggle.dart';
+import 'dart:convert';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import '../../core/constants.dart';
 
 /// Users Tab - Unified management for Mahasiswa and Petugas
 class UsersTab extends ConsumerStatefulWidget {
@@ -590,6 +593,12 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   bool _isSaving = false;
   String? _errorText;
 
+  // WebSocket for real-time RFID scanning auto-fill
+  WebSocketChannel? _wsChannel;
+  bool _wsConnected = false;
+  bool _rfidScannedSuccess = false;
+  String? _scannedUid;
+
   bool get _isMahasiswa => widget.role == 'mahasiswa';
   bool get _isEdit => widget.user != null;
 
@@ -615,6 +624,74 @@ class _UserFormDialogState extends State<_UserFormDialog> {
       _selectedProdiId = null;
     }
     _selectedAngkatan = _asIntValue(user?['angkatan']) ?? DateTime.now().year;
+
+    if (_isMahasiswa) {
+      _connectWebSocket();
+    }
+  }
+
+  void _connectWebSocket() {
+    if (!mounted || !_isMahasiswa) return;
+    try {
+      _wsChannel = WebSocketChannel.connect(Uri.parse(AppConstants.wsUrl));
+      _wsChannel!.stream.listen(
+        (message) {
+          if (!mounted) return;
+          try {
+            final data = jsonDecode(message.toString());
+            if (data is Map && data['type'] == 'rfid_register') {
+              final rfidUid = data['rfid_uid']?.toString() ?? '';
+              if (rfidUid.isNotEmpty) {
+                setState(() {
+                  _rfidController.text = rfidUid;
+                  _rfidScannedSuccess = true;
+                  _scannedUid = rfidUid;
+                  _wsConnected = true;
+                });
+                // Reset scanned success indicator state after 4 seconds
+                Future.delayed(const Duration(seconds: 4), () {
+                  if (mounted && _scannedUid == rfidUid) {
+                    setState(() {
+                      _rfidScannedSuccess = false;
+                    });
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            debugPrint("Error parsing ws message: $e");
+          }
+        },
+        onDone: () {
+          if (mounted) {
+            setState(() {
+              _wsConnected = false;
+            });
+            // Try to reconnect after a short delay
+            Future.delayed(const Duration(seconds: 4), _connectWebSocket);
+          }
+        },
+        onError: (error) {
+          if (mounted) {
+            setState(() {
+              _wsConnected = false;
+            });
+            // Try to reconnect after a short delay
+            Future.delayed(const Duration(seconds: 4), _connectWebSocket);
+          }
+        },
+      );
+      setState(() {
+        _wsConnected = true;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _wsConnected = false;
+        });
+        Future.delayed(const Duration(seconds: 4), _connectWebSocket);
+      }
+    }
   }
 
   @override
@@ -623,6 +700,9 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     _nameController.dispose();
     _passwordController.dispose();
     _rfidController.dispose();
+    try {
+      _wsChannel?.sink.close();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -766,11 +846,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                 const SizedBox(height: 14),
                 _buildProdiSelector(),
                 const SizedBox(height: 14),
-                _buildFormField(
-                  controller: _rfidController,
-                  label: 'RFID UID (opsional)',
-                  icon: IconlyLight.scan,
-                ),
+                _buildRfidField(),
               ],
               if (_errorText != null) ...[
                 const SizedBox(height: 14),
@@ -846,6 +922,81 @@ class _UserFormDialogState extends State<_UserFormDialog> {
       controller: controller,
       obscureText: obscureText,
       decoration: _inputDecoration(label, icon),
+    );
+  }
+
+  Widget _buildRfidField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildFormField(
+          controller: _rfidController,
+          label: 'RFID UID (opsional)',
+          icon: IconlyLight.scan,
+        ),
+        const SizedBox(height: 8),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: _rfidScannedSuccess
+                ? Colors.green.shade50
+                : (_wsConnected ? AppTheme.slate50 : Colors.amber.shade50),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _rfidScannedSuccess
+                  ? Colors.green.shade200
+                  : (_wsConnected ? AppTheme.slate200 : Colors.amber.shade200),
+            ),
+          ),
+          child: Row(
+            children: [
+              if (_rfidScannedSuccess)
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.green,
+                  size: 18,
+                ).animate().scale(duration: 200.ms).then().shimmer(duration: 400.ms)
+              else if (_wsConnected)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                  ),
+                ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                 .scale(begin: const Offset(0.8, 0.8), end: const Offset(1.3, 1.3), duration: 800.ms)
+              else
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.amber.shade700,
+                  ),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _rfidScannedSuccess
+                      ? 'Kartu RFID "$_scannedUid" berhasil terdeteksi!'
+                      : (_wsConnected
+                          ? 'Scanner RFID aktif. Tempelkan kartu pada scanner.'
+                          : 'Menghubungkan ke scanner RFID...'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _rfidScannedSuccess
+                        ? Colors.green.shade700
+                        : (_wsConnected ? AppTheme.slate600 : Colors.amber.shade800),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

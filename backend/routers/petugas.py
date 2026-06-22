@@ -93,11 +93,16 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
     
     # If approved, create the actual ParkingLog
     if action == "disetujui":
+        display_name = "Mahasiswa"
+        display_plate = "MANUAL"
+        
         if req.emergency_guest_id:
             guest = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.id == req.emergency_guest_id).first()
             if guest:
                 guest.waktu_keluar = datetime.now(timezone.utc)
                 guest.status = "sudah_keluar"
+                display_name = guest.nama + " (Tamu)"
+                display_plate = guest.plat_nomor
                 
             # Log as manual for emergency
             new_log = models.ParkingLog(
@@ -108,6 +113,13 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
             )
             db.add(new_log)
         else:
+            user = db.query(models.User).filter(models.User.id == req.user_id).first()
+            vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == req.vehicle_id).first()
+            if user:
+                display_name = user.nama
+            if vehicle:
+                display_plate = vehicle.plat_nomor
+                
             new_log = models.ParkingLog(
                 user_id=req.user_id,
                 vehicle_id=req.vehicle_id,
@@ -119,7 +131,20 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
         # Trigger physical servo via Firebase Realtime Database
         from core.firebase import trigger_physical_servo
         await trigger_physical_servo()
-    
+        
+        # Broadcast success log to the Live Monitor Socket for petugas dashboard
+        try:
+            from routers.iot import manager
+            await manager.broadcast({
+                "type": "success",
+                "message": f"Akses {req.jenis_aktivitas} disetujui manual.",
+                "user": display_name,
+                "plate": display_plate,
+                "time": datetime.now(timezone.utc).isoformat()
+            })
+        except Exception:
+            pass
+            
     db.commit()
     
     try:

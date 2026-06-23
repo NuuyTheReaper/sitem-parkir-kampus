@@ -249,7 +249,7 @@ async def capture_and_validate_gate(
     4. Backend menjalankan validasi ganda memakai RFID + hasil ANPR.
     """
     if request.gate_type not in ["masuk", "keluar"]:
-        raise HTTPException(status_code=400, detail="gate_type harus 'masuk' atau 'keluar'")
+        raise HTTPException(status_code=400, detail="gate_type harus 'masuk' or 'keluar'")
 
     # Cek jika ada browser (dashboard petugas) yang sedang aktif terhubung lewat websocket
     if manager.active_connections:
@@ -976,7 +976,7 @@ async def emergency_gate_action(
         # Log it as manual_petugas activity (for non-registered users, linking the guest)
         new_log = models.ParkingLog(
             user_id=current_user.id,
-            vehicle_id=1,  # Dummy vehicle ID
+            vehicle_id=None,  # No dummy vehicle ID needed since vehicle_id is now nullable
             emergency_guest_id=guest_id_to_log,
             jenis_aktivitas=gate,
             status_akses=models.AccessStatusEnum.darurat

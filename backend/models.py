@@ -101,8 +101,8 @@ class ParkingLog(Base):
     __tablename__ = "parking_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
     emergency_guest_id = Column(Integer, ForeignKey("emergency_guests.id"), nullable=True)
     waktu = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     jenis_aktivitas = Column(SQLEnum(ActivityTypeEnum), nullable=False)

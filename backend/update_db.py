@@ -84,6 +84,13 @@ def update_database():
         except Exception as e:
             print(f"Column 'emergency_guest_id' might already exist or failed: {e}")
         
+        try:
+            conn.execute(text("ALTER TABLE parking_logs MODIFY user_id INTEGER NULL"))
+            conn.execute(text("ALTER TABLE parking_logs MODIFY vehicle_id INTEGER NULL"))
+            print("Modified user_id and vehicle_id in parking_logs to be nullable.")
+        except Exception as e:
+            print(f"Failed to modify user_id and vehicle_id in parking_logs: {e}")
+        
         conn.commit()
 
 if __name__ == "__main__":

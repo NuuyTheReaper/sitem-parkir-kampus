@@ -42,6 +42,7 @@ async def verify_vehicle(vehicle_id: int, status: str, db: Session = Depends(get
     except Exception:
         pass
     return vehicle
+
 @router.get("/access-requests/pending")
 def get_pending_access_requests(db: Session = Depends(get_db)):
     from datetime import datetime, timezone
@@ -115,8 +116,9 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
                 
             # Log as manual for emergency
             new_log = models.ParkingLog(
-                user_id=1, # Default user or you could skip if nullable
-                vehicle_id=1, # Default vehicle or you could skip if nullable
+                user_id=None,
+                vehicle_id=None,
+                emergency_guest_id=req.emergency_guest_id,
                 jenis_aktivitas=req.jenis_aktivitas,
                 status_akses=models.AccessStatusEnum.manual_petugas
             )

@@ -52,11 +52,10 @@
 const char* ssid = "Makoto.wifi";          // Ganti dengan nama Wi-Fi Anda
 const char* password = "harisabtu";  // Ganti dengan password Wi-Fi Anda
 
-// --- Konfigurasi Backend ---
-// Gunakan IP Address lokal atau domain hosted
+// --- Konfigurasi Backend & Firebase ---
 const String backendUrl = "https://parkirkampus.my.id/api/gate/capture-validate";
-const String checkTriggerUrl = "https://parkirkampus.my.id/api/gate/check-trigger";
-const String resetTriggerUrl = "https://parkirkampus.my.id/api/gate/reset-trigger";
+const String firebaseHost = "https://parking-system-2546df-default-rtdb.firebaseio.com";
+const String firebaseAuth = "lwFhrCtxQwicVlNIuitXN98Dup4ESSdYSXKSKMdn";
 
 // --- Definisikan PIN ---
 #define PIN_RST          3  // RX (GPIO 3) - RFID Reset
@@ -679,54 +678,57 @@ void sendRegistrationRequest(String uid) {
   http.end();
 }
 
-// Fungsi membaca trigger gerbang dari Backend via HTTP biasa (Bypass Firebase)
+// Fungsi membaca trigger gerbang dari Firebase Realtime Database via HTTPS REST API
 void checkBackendTrigger() {
-  WiFiClient client;
+  WiFiClientSecure client;
   HTTPClient http;
   
-  Serial.print("[MEMORI] Free heap sebelum Backend GET: ");
+  // Mengabaikan verifikasi sertifikat SSL untuk koneksi HTTPS ke Firebase
+  client.setInsecure();
+  
+  String gateId = (currentMode == MODE_MASUK || currentMode == MODE_DAFTAR) ? "GATE_MASUK_1" : "GATE_KELUAR_1";
+  String checkUrl = firebaseHost + "/gates/" + gateId + "/servo_trigger.json?auth=" + firebaseAuth;
+  String resetUrl = firebaseHost + "/gates/" + gateId + "/servo_trigger.json?auth=" + firebaseAuth;
+
+  Serial.print("[MEMORI] Free heap sebelum Firebase GET (");
+  Serial.print(gateId);
+  Serial.print("): ");
   Serial.print(ESP.getFreeHeap());
   Serial.print(" B | WiFi RSSI: ");
   Serial.print(WiFi.RSSI());
   Serial.println(" dBm");
   
-  http.begin(client, checkTriggerUrl);
-  http.setTimeout(1000); // Batasi timeout ke 1 detik
+  http.begin(client, checkUrl);
+  http.setTimeout(2000); // Batasi timeout ke 2 detik
   int httpResponseCode = http.GET();
   
   if (httpResponseCode == 200) {
     String response = http.getString();
+    response.trim();
+    int triggerValue = response.toInt();
     
-    // Parse JSON response: {"trigger": 1} or {"trigger": 0}
-    StaticJsonDocument<100> doc;
-    DeserializationError error = deserializeJson(doc, response);
-    if (!error) {
-      int triggerValue = doc["trigger"];
-      if (triggerValue == 1) {
-        Serial.println("[HTTP TRIGGER] Sinyal Buka Gerbang Diterima!");
-        http.end(); // Akhiri GET
-        
-        // Reset trigger di backend kembali ke 0
-        http.begin(client, resetTriggerUrl);
-        http.setTimeout(1000);
-        int postCode = http.POST(""); // POST kosong untuk reset
-        if (postCode == 200) {
-          Serial.println("[HTTP TRIGGER] Trigger berhasil di-reset kembali ke 0.");
-        } else {
-          Serial.print("[HTTP TRIGGER] Gagal mereset trigger: HTTP ");
-          Serial.println(postCode);
-        }
-        http.end();
-        
-        // Buka Gerbang setelah reset berhasil
-        openGate();
+    if (triggerValue == 1) {
+      Serial.println("[FIREBASE TRIGGER] Sinyal Buka Gerbang Diterima!");
+      http.end(); // Akhiri GET request
+      
+      // Reset trigger ke 0 di Firebase menggunakan PUT
+      http.begin(client, resetUrl);
+      http.addHeader("Content-Type", "application/json");
+      http.setTimeout(2000);
+      int putCode = http.PUT("0");
+      if (putCode == 200) {
+        Serial.println("[FIREBASE TRIGGER] Trigger berhasil di-reset kembali ke 0.");
+      } else {
+        Serial.print("[FIREBASE TRIGGER] Gagal mereset trigger di Firebase: HTTP ");
+        Serial.println(putCode);
       }
-    } else {
-      Serial.print("[HTTP TRIGGER] Gagal mengurai JSON: ");
-      Serial.println(error.c_str());
+      http.end();
+      
+      // Buka Gerbang setelah reset berhasil
+      openGate();
     }
   } else {
-    Serial.print("[HTTP TRIGGER] HTTP GET gagal, error code: ");
+    Serial.print("[FIREBASE TRIGGER] HTTP GET gagal, error code: ");
     Serial.println(httpResponseCode);
   }
   http.end(); // Selalu tutup koneksi secara bersih

@@ -458,7 +458,7 @@ async def upload_and_validate_gate(
     result = await _run_dual_validation(dual_request, db, image_path=relative_path)
     if result.action == "open_gate" and gate_id != "GATE_ESP8266":
         from core.firebase import trigger_physical_servo
-        await trigger_physical_servo()
+        await trigger_physical_servo(gate_id)
     return result
 
 
@@ -805,7 +805,7 @@ async def process_gate_scan(scan: GateScanRequest, db: Session = Depends(get_db)
 
 
 @router.post("/register-tap")
-async def register_tap(rfid_uid: str, db: Session = Depends(get_db)):
+async def register_tap(rfid_uid: str, gate_id: str = "GATE_MASUK_1", db: Session = Depends(get_db)):
     """
     Endpoint untuk mendaftarkan kartu RFID baru.
     Menerima tap dari ESP8266 (Mode 4x click), mem-broadcast ke Live Monitor,
@@ -820,7 +820,7 @@ async def register_tap(rfid_uid: str, db: Session = Depends(get_db)):
     
     # Simpan ke Firebase Realtime Database
     if settings.FIREBASE_DB_URL:
-        url = f"{settings.FIREBASE_DB_URL.rstrip('/')}/gate/last_scanned_rfid.json"
+        url = f"{settings.FIREBASE_DB_URL.rstrip('/')}/gates/{gate_id}/last_scanned_rfid.json"
         params = {}
         if settings.FIREBASE_DB_SECRET:
             params["auth"] = settings.FIREBASE_DB_SECRET
@@ -995,7 +995,8 @@ async def emergency_gate_action(
 
     # Trigger physical servo via Firebase Realtime Database
     from core.firebase import trigger_physical_servo
-    await trigger_physical_servo()
+    gate_id = "GATE_MASUK_1" if gate == "masuk" else "GATE_KELUAR_1"
+    await trigger_physical_servo(gate_id)
     
     return {"status": "success", "message": f"Gate {gate} dibuka manual untuk {display_name}"}
 
@@ -1180,11 +1181,16 @@ async def check_gate_trigger():
 
 
 @router.post("/reset-trigger")
-async def reset_gate_trigger():
+async def reset_gate_trigger(gate_id: str = "GATE_MASUK_1"):
     """
     Called by ESP8266 via HTTP POST after receiving a trigger to reset back to 0.
     """
     global local_servo_trigger
     local_servo_trigger = 0
-    logger.info("[HTTP Trigger] Reset local_servo_trigger to 0")
+    logger.info(f"[HTTP Trigger] Reset local_servo_trigger to 0 for {gate_id}")
+    
+    # Reset Firebase servo_trigger to 0
+    from core.firebase import reset_physical_servo
+    await reset_physical_servo(gate_id)
+    
     return {"status": "success", "trigger": local_servo_trigger}

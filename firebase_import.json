@@ -1,0 +1,14 @@
+{
+  "gates": {
+    "GATE_MASUK_1": {
+      "last_scanned_rfid": "NONE",
+      "servo_trigger": 0,
+      "last_updated": 1782210245000
+    },
+    "GATE_KELUAR_1": {
+      "last_scanned_rfid": "NONE",
+      "servo_trigger": 0,
+      "last_updated": 1782210245000
+    }
+  }
+}

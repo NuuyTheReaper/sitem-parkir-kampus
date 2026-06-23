@@ -90,6 +90,13 @@ def update_database():
             print("Modified user_id and vehicle_id in parking_logs to be nullable.")
         except Exception as e:
             print(f"Failed to modify user_id and vehicle_id in parking_logs: {e}")
+
+        # Update status_akses ENUM values
+        try:
+            conn.execute(text("ALTER TABLE parking_logs MODIFY COLUMN status_akses ENUM('otomatis', 'manual_petugas', 'darurat') NOT NULL"))
+            print("Updated status_akses ENUM values in parking_logs table.")
+        except Exception as e:
+            print(f"Failed to update status_akses ENUM: {e}")
         
         conn.commit()
 

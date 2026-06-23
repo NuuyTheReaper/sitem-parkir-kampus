@@ -986,7 +986,7 @@ async def emergency_gate_action(
     
     # Broadcast to live monitor so it shows up in logs
     await manager.broadcast({
-        "type": "error", # Highlight as yellow/warning in UI
+        "type": "success", # Highlight as success/green in UI
         "message": f"🚨 EMERGENCY OVERRIDE ({gate.upper()})",
         "user": display_name,
         "plate": display_plate,

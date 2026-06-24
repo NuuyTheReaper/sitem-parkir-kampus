@@ -755,8 +755,22 @@ void checkBackendTrigger() {
         }
         http.end();
         
+        // Indikator visual & audio sukses (disamakan dengan RFID tap)
+        beepSuccess();
+        lcd.clear();
+        if (currentMode == MODE_MASUK) {
+          lcd.setCursor(0, 0);
+          lcd.print("Silakan Masuk");
+        } else {
+          lcd.setCursor(0, 0);
+          lcd.print("Silakan Keluar");
+        }
+        lcd.setCursor(0, 1);
+        lcd.print("Buka Manual");
+        
         // Buka Gerbang setelah reset berhasil
         openGate();
+        updateLedIndicators(); // Kembalikan ke tampilan standby/idle
       }
     } else {
       Serial.print("[HTTP TRIGGER] Gagal mengurai JSON: ");

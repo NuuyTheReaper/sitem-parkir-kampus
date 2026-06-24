@@ -1131,25 +1131,28 @@ def get_parking_capacity(db: Session = Depends(get_db)):
 from fastapi.responses import StreamingResponse
 
 @router.get("/camera-stream")
-def proxy_camera_stream(camera_url: str):
+async def proxy_camera_stream(camera_url: str):
     """
     Proxy & Transcode RTSP stream dari IP Cam menjadi MJPEG agar bisa dirender di Web.
     """
     import cv2
-    import time
+    import asyncio
 
-    def generate_frames():
+    async def generate_frames():
         cap = cv2.VideoCapture(camera_url)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         while True:
-            success, frame = cap.read()
+            # Gunakan loop.run_in_executor agar pembacaan frame OpenCV tidak memblokir event loop
+            loop = asyncio.get_event_loop()
+            success, frame = await loop.run_in_executor(None, cap.read)
+            
             if not success:
-                time.sleep(1)
+                await asyncio.sleep(1)
                 cap = cv2.VideoCapture(camera_url)
                 continue
             
-            # Compress to JPEG with 80% quality
+            # Compress to JPEG dengan 80% quality
             ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if not ret:
                 continue
@@ -1158,7 +1161,7 @@ def proxy_camera_stream(camera_url: str):
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
             
-            time.sleep(0.04)
+            await asyncio.sleep(0.04)
 
     return StreamingResponse(
         generate_frames(), 

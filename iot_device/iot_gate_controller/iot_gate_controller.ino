@@ -76,6 +76,11 @@ MFRC522 mfrc522(PIN_SDA, PIN_RST);
 Servo gateServo;
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 
+// --- Objek Global Network (Untuk menghemat RAM dan mencegah fragmentasi heap) ---
+WiFiClient clientPlain;
+WiFiClientSecure clientSecure;
+HTTPClient http;
+
 // --- Variabel State ---
 enum GateMode { MODE_MASUK, MODE_KELUAR, MODE_DARURAT, MODE_DAFTAR };
 GateMode currentMode = MODE_MASUK; // Default mode: Masuk
@@ -174,6 +179,10 @@ void setup() {
   Serial.println(" '4' : Ganti ke Mode Daftar Kartu Baru");
   Serial.println("--------------------------------------------------");
 
+  // Konfigurasi buffer SSL untuk menghemat memori (BearSSL MFLN)
+  clientSecure.setBufferSizes(2048, 1024);
+  clientSecure.setInsecure();
+
   // Koneksi Wi-Fi
   connectToWiFi();
 }
@@ -208,8 +217,8 @@ void loop() {
   // 3. Baca RFID Card jika ada kartu yang di-tap
   bool cardProcessed = handleRfidInput();
 
-  // 4. Cek Backend Trigger secara berkala (hanya jika tidak ada aktivitas tombol/RFID baru-baru ini)
-  if (!cardProcessed && (millis() - lastButtonPressTime >= 10000) && (millis() - lastBackendCheck >= backendCheckInterval)) {
+  // 4. Cek Backend Trigger secara berkala (hanya jika tidak sedang di Mode Darurat, dan tidak ada aktivitas RFID baru-baru ini)
+  if (currentMode != MODE_DARURAT && !cardProcessed && (millis() - lastBackendCheck >= backendCheckInterval)) {
     lastBackendCheck = millis();
     checkBackendTrigger();
   }
@@ -266,6 +275,7 @@ void updateLedIndicators() {
   lcd.clear();
   
   if (currentMode == MODE_MASUK) {
+    gateServo.write(0); // Pastikan gerbang tertutup pada standby mode
     lcd.setCursor(0, 0);
     lcd.print("Gate: MASUK");
     lcd.setCursor(0, 1);
@@ -273,6 +283,7 @@ void updateLedIndicators() {
     Serial.println("[MODE] Masuk (Mode 1) - SIAP TAP");
   } 
   else if (currentMode == MODE_KELUAR) {
+    gateServo.write(0); // Pastikan gerbang tertutup pada standby mode
     lcd.setCursor(0, 0);
     lcd.print("Gate: KELUAR");
     lcd.setCursor(0, 1);
@@ -280,6 +291,7 @@ void updateLedIndicators() {
     Serial.println("[MODE] Keluar (Mode 2) - SIAP TAP");
   } 
   else if (currentMode == MODE_DARURAT) {
+    gateServo.write(90); // Gerbang tetap terbuka terus-menerus selama Mode Darurat
     lcd.setCursor(0, 0);
     lcd.print("Gate: DARURAT");
     lcd.setCursor(0, 1);
@@ -287,6 +299,7 @@ void updateLedIndicators() {
     Serial.println("[MODE] Darurat (Mode 3) - GERBANG TERBUKA");
   }
   else if (currentMode == MODE_DAFTAR) {
+    gateServo.write(0); // Pastikan gerbang tertutup pada standby mode
     lcd.setCursor(0, 0);
     lcd.print("Mode: DAFTAR");
     lcd.setCursor(0, 1);
@@ -299,6 +312,12 @@ void updateLedIndicators() {
 void openGate() {
   Serial.println("[SERVO] Membuka gerbang...");
   gateServo.write(90); // Buka gerbang ke 90 derajat
+  
+  if (currentMode == MODE_DARURAT) {
+    Serial.println("[SERVO] Mode Darurat Aktif: Gerbang dibiarkan tetap TERBUKA.");
+    return; // Keluar awal agar gerbang tidak tertutup kembali
+  }
+  
   delay(5000);         // Tunggu kendaraan lewat selama 5 detik
   Serial.println("[SERVO] Menutup gerbang...");
   gateServo.write(0);  // Tutup kembali gerbang ke 0 derajat
@@ -479,9 +498,8 @@ bool handleRfidInput() {
 
 // Fungsi mengirim request validasi ganda ke API Backend
 void sendValidationRequest(String uid) {
-  WiFiClient clientPlain;
-  WiFiClientSecure clientSecure;
-  HTTPClient http;
+  clientPlain.stop();
+  clientSecure.stop();
   
   Serial.print("[MEMORI] Free heap sebelum backend POST: ");
   Serial.print(ESP.getFreeHeap());
@@ -491,11 +509,11 @@ void sendValidationRequest(String uid) {
 
   Serial.println("[HTTP] Mengirim data ke backend...");
   if (backendUrl.startsWith("https://")) {
-    clientSecure.setInsecure();
     http.begin(clientSecure, backendUrl);
   } else {
     http.begin(clientPlain, backendUrl);
   }
+  http.setReuse(false); // Pastikan koneksi ditutup setelah selesai
   http.setTimeout(30000); // Set timeout ke 30 detik karena proses ANPR & OCR di backend butuh waktu
   http.addHeader("Content-Type", "application/json");
 
@@ -615,9 +633,8 @@ void sendValidationRequest(String uid) {
 
 // Fungsi mengirim request pendaftaran kartu baru ke API Backend
 void sendRegistrationRequest(String uid) {
-  WiFiClient clientPlain;
-  WiFiClientSecure clientSecure;
-  HTTPClient http;
+  clientPlain.stop();
+  clientSecure.stop();
   
   // Ubah URL endpoint pendaftaran: /api/gate/register-tap?rfid_uid=HEX_UID
   String regUrl = backendUrl;
@@ -633,11 +650,11 @@ void sendRegistrationRequest(String uid) {
   Serial.println(regUrl);
   
   if (regUrl.startsWith("https://")) {
-    clientSecure.setInsecure();
     http.begin(clientSecure, regUrl);
   } else {
     http.begin(clientPlain, regUrl);
   }
+  http.setReuse(false); // Pastikan koneksi ditutup setelah selesai
   http.setTimeout(10000); // Set timeout ke 10 detik
   int httpResponseCode = http.POST(""); // Kirim POST kosong karena UID ada di parameter URL
 
@@ -680,9 +697,8 @@ void sendRegistrationRequest(String uid) {
 
 // Fungsi membaca trigger gerbang dari Backend via HTTP/HTTPS (Bypass Firebase untuk keandalan)
 void checkBackendTrigger() {
-  WiFiClient clientPlain;
-  WiFiClientSecure clientSecure;
-  HTTPClient http;
+  clientPlain.stop();
+  clientSecure.stop();
   
   String gateId = (currentMode == MODE_MASUK || currentMode == MODE_DAFTAR) ? "GATE_MASUK_1" : "GATE_KELUAR_1";
   
@@ -701,12 +717,12 @@ void checkBackendTrigger() {
   Serial.println(" dBm");
   
   if (checkUrl.startsWith("https://")) {
-    clientSecure.setInsecure();
     http.begin(clientSecure, checkUrl);
   } else {
     http.begin(clientPlain, checkUrl);
   }
-  http.setTimeout(3000); // Batasi timeout ke 3 detik
+  http.setReuse(false); // Pastikan koneksi ditutup setelah selesai
+  http.setTimeout(8000); // Batasi timeout ke 8 detik karena TLS handshake di ESP8266 membutuhkan waktu lebih lama
   
   int httpResponseCode = http.GET();
   
@@ -729,6 +745,7 @@ void checkBackendTrigger() {
         } else {
           http.begin(clientPlain, resetUrl);
         }
+        http.setReuse(false); // Pastikan koneksi ditutup setelah selesai
         http.setTimeout(3000);
         int postCode = http.POST(""); // POST kosong untuk reset
         if (postCode == 200) {

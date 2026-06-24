@@ -95,7 +95,7 @@ bool wasConnected = false;
 
 // Variabel untuk Backend HTTP polling interval (non-blocking)
 unsigned long lastBackendCheck = 0;
-const unsigned long backendCheckInterval = 5000; // Cek setiap 5 detik
+const unsigned long backendCheckInterval = 1000; // Cek setiap 1 detik untuk respon cepat
 
 // --- Fungsi Indikator Buzzer ---
 void beepTap() {
@@ -697,9 +697,6 @@ void sendRegistrationRequest(String uid) {
 
 // Fungsi membaca trigger gerbang dari Backend via HTTP/HTTPS (Bypass Firebase untuk keandalan)
 void checkBackendTrigger() {
-  clientPlain.stop();
-  clientSecure.stop();
-  
   String gateId = (currentMode == MODE_MASUK || currentMode == MODE_DAFTAR) ? "GATE_MASUK_1" : "GATE_KELUAR_1";
   
   // Membangun URL polling dan reset berdasarkan backendUrl
@@ -721,8 +718,8 @@ void checkBackendTrigger() {
   } else {
     http.begin(clientPlain, checkUrl);
   }
-  http.setReuse(false); // Pastikan koneksi ditutup setelah selesai
-  http.setTimeout(8000); // Batasi timeout ke 8 detik karena TLS handshake di ESP8266 membutuhkan waktu lebih lama
+  http.setReuse(true); // Aktifkan keep-alive agar respon sub-second (<100ms)
+  http.setTimeout(4000); // Batasi timeout ke 4 detik karena koneksi menggunakan keep-alive
   
   int httpResponseCode = http.GET();
   
@@ -745,7 +742,7 @@ void checkBackendTrigger() {
         } else {
           http.begin(clientPlain, resetUrl);
         }
-        http.setReuse(false); // Pastikan koneksi ditutup setelah selesai
+        http.setReuse(true); // Aktifkan keep-alive agar respon sub-second (<100ms)
         http.setTimeout(3000);
         int postCode = http.POST(""); // POST kosong untuk reset
         if (postCode == 200) {
@@ -753,6 +750,8 @@ void checkBackendTrigger() {
         } else {
           Serial.print("[HTTP TRIGGER] Gagal mereset trigger di backend: HTTP ");
           Serial.println(postCode);
+          clientPlain.stop();
+          clientSecure.stop();
         }
         http.end();
         
@@ -766,6 +765,9 @@ void checkBackendTrigger() {
   } else {
     Serial.print("[HTTP TRIGGER] HTTP GET gagal, error code: ");
     Serial.println(httpResponseCode);
+    // Reset koneksi jika terjadi error/timeout agar koneksi berikutnya bersih
+    clientPlain.stop();
+    clientSecure.stop();
   }
   http.end(); // Selalu tutup koneksi secara bersih
 }

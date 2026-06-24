@@ -1139,17 +1139,17 @@ async def proxy_camera_stream(camera_url: str):
     import asyncio
 
     async def generate_frames():
-        cap = cv2.VideoCapture(camera_url)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        loop = asyncio.get_event_loop()
+        cap = await loop.run_in_executor(None, lambda: cv2.VideoCapture(camera_url))
+        await loop.run_in_executor(None, lambda: cap.set(cv2.CAP_PROP_BUFFERSIZE, 1))
 
         while True:
             # Gunakan loop.run_in_executor agar pembacaan frame OpenCV tidak memblokir event loop
-            loop = asyncio.get_event_loop()
             success, frame = await loop.run_in_executor(None, cap.read)
             
             if not success:
                 await asyncio.sleep(1)
-                cap = cv2.VideoCapture(camera_url)
+                cap = await loop.run_in_executor(None, lambda: cv2.VideoCapture(camera_url))
                 continue
             
             # Compress to JPEG dengan 80% quality

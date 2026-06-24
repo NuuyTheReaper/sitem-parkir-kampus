@@ -140,9 +140,10 @@ async def respond_to_access_request(request_id: int, action: str, catatan: str =
             db.add(new_log)
             
         # Trigger physical servo via Firebase Realtime Database
+        import asyncio
         from core.firebase import trigger_physical_servo
         gate_id = "GATE_MASUK_1" if req.jenis_aktivitas == "masuk" else "GATE_KELUAR_1"
-        await trigger_physical_servo(gate_id)
+        asyncio.create_task(trigger_physical_servo(gate_id))
         
         # Broadcast success log to the Live Monitor Socket for petugas dashboard
         try:

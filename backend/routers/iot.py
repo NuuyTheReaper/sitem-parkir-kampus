@@ -458,7 +458,7 @@ async def upload_and_validate_gate(
     result = await _run_dual_validation(dual_request, db, image_path=relative_path)
     if result.action == "open_gate" and gate_id != "GATE_ESP8266":
         from core.firebase import trigger_physical_servo
-        await trigger_physical_servo(gate_id)
+        asyncio.create_task(trigger_physical_servo(gate_id))
     return result
 
 
@@ -996,7 +996,7 @@ async def emergency_gate_action(
     # Trigger physical servo via Firebase Realtime Database
     from core.firebase import trigger_physical_servo
     gate_id = "GATE_MASUK_1" if gate == "masuk" else "GATE_KELUAR_1"
-    await trigger_physical_servo(gate_id)
+    asyncio.create_task(trigger_physical_servo(gate_id))
     
     return {"status": "success", "message": f"Gate {gate} dibuka manual untuk {display_name}"}
 
@@ -1195,6 +1195,6 @@ async def reset_gate_trigger(gate_id: str = "GATE_MASUK_1"):
     
     # Reset Firebase servo_trigger to 0
     from core.firebase import reset_physical_servo
-    await reset_physical_servo(gate_id)
+    asyncio.create_task(reset_physical_servo(gate_id))
     
     return {"status": "success", "trigger": 0}

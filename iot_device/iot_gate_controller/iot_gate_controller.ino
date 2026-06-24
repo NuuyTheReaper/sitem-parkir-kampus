@@ -678,19 +678,21 @@ void sendRegistrationRequest(String uid) {
   http.end();
 }
 
-// Fungsi membaca trigger gerbang dari Firebase Realtime Database via HTTPS REST API
+// Fungsi membaca trigger gerbang dari Backend via HTTP/HTTPS (Bypass Firebase untuk keandalan)
 void checkBackendTrigger() {
-  WiFiClientSecure client;
+  WiFiClient clientPlain;
+  WiFiClientSecure clientSecure;
   HTTPClient http;
   
-  // Mengabaikan verifikasi sertifikat SSL untuk koneksi HTTPS ke Firebase
-  client.setInsecure();
-  
   String gateId = (currentMode == MODE_MASUK || currentMode == MODE_DAFTAR) ? "GATE_MASUK_1" : "GATE_KELUAR_1";
-  String checkUrl = firebaseHost + "/gates/" + gateId + "/servo_trigger.json?auth=" + firebaseAuth;
-  String resetUrl = firebaseHost + "/gates/" + gateId + "/servo_trigger.json?auth=" + firebaseAuth;
+  
+  // Membangun URL polling dan reset berdasarkan backendUrl
+  String checkUrl = backendUrl;
+  checkUrl.replace("/capture-validate", "/check-trigger?gate_id=" + gateId);
+  String resetUrl = backendUrl;
+  resetUrl.replace("/capture-validate", "/reset-trigger?gate_id=" + gateId);
 
-  Serial.print("[MEMORI] Free heap sebelum Firebase GET (");
+  Serial.print("[MEMORI] Free heap sebelum Backend GET (");
   Serial.print(gateId);
   Serial.print("): ");
   Serial.print(ESP.getFreeHeap());
@@ -698,38 +700,57 @@ void checkBackendTrigger() {
   Serial.print(WiFi.RSSI());
   Serial.println(" dBm");
   
-  http.begin(client, checkUrl);
-  http.setTimeout(2000); // Batasi timeout ke 2 detik
+  if (checkUrl.startsWith("https://")) {
+    clientSecure.setInsecure();
+    http.begin(clientSecure, checkUrl);
+  } else {
+    http.begin(clientPlain, checkUrl);
+  }
+  http.setTimeout(3000); // Batasi timeout ke 3 detik
+  
   int httpResponseCode = http.GET();
   
   if (httpResponseCode == 200) {
     String response = http.getString();
     response.trim();
-    int triggerValue = response.toInt();
     
-    if (triggerValue == 1) {
-      Serial.println("[FIREBASE TRIGGER] Sinyal Buka Gerbang Diterima!");
-      http.end(); // Akhiri GET request
-      
-      // Reset trigger ke 0 di Firebase menggunakan PUT
-      http.begin(client, resetUrl);
-      http.addHeader("Content-Type", "application/json");
-      http.setTimeout(2000);
-      int putCode = http.PUT("0");
-      if (putCode == 200) {
-        Serial.println("[FIREBASE TRIGGER] Trigger berhasil di-reset kembali ke 0.");
-      } else {
-        Serial.print("[FIREBASE TRIGGER] Gagal mereset trigger di Firebase: HTTP ");
-        Serial.println(putCode);
+    // Parse JSON response: {"trigger": 1} or {"trigger": 0}
+    StaticJsonDocument<150> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      int triggerValue = doc["trigger"];
+      if (triggerValue == 1) {
+        Serial.println("[HTTP TRIGGER] Sinyal Buka Gerbang Diterima!");
+        http.end(); // Akhiri GET request
+        
+        // Reset trigger di backend kembali ke 0 menggunakan POST
+        if (resetUrl.startsWith("https://")) {
+          http.begin(clientSecure, resetUrl);
+        } else {
+          http.begin(clientPlain, resetUrl);
+        }
+        http.setTimeout(3000);
+        int postCode = http.POST(""); // POST kosong untuk reset
+        if (postCode == 200) {
+          Serial.println("[HTTP TRIGGER] Trigger berhasil di-reset kembali ke 0.");
+        } else {
+          Serial.print("[HTTP TRIGGER] Gagal mereset trigger di backend: HTTP ");
+          Serial.println(postCode);
+        }
+        http.end();
+        
+        // Buka Gerbang setelah reset berhasil
+        openGate();
       }
-      http.end();
-      
-      // Buka Gerbang setelah reset berhasil
-      openGate();
+    } else {
+      Serial.print("[HTTP TRIGGER] Gagal mengurai JSON: ");
+      Serial.println(error.c_str());
     }
   } else {
-    Serial.print("[FIREBASE TRIGGER] HTTP GET gagal, error code: ");
+    Serial.print("[HTTP TRIGGER] HTTP GET gagal, error code: ");
     Serial.println(httpResponseCode);
   }
   http.end(); // Selalu tutup koneksi secara bersih
 }
+
+

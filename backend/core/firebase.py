@@ -8,7 +8,9 @@ async def trigger_physical_servo(gate_id: str = "GATE_MASUK_1"):
     # Set the local trigger first to ensure it's updated immediately for HTTP polling
     try:
         from routers import iot
-        iot.local_servo_trigger = 1
+        if not hasattr(iot, 'local_servo_triggers'):
+            iot.local_servo_triggers = {}
+        iot.local_servo_triggers[gate_id] = 1
         print(f"[Firebase Helper] [OK] local_servo_trigger set to 1 for {gate_id}")
     except Exception as e:
         print(f"[Firebase Helper] [ERROR] Error setting local_servo_trigger: {e}")

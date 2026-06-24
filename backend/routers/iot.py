@@ -108,8 +108,8 @@ petugas_notifier = PetugasNotificationManager()
 # Format: {"GATE_MASUK_1": {"plate": "G5090DB", "confidence": 0.95, "timestamp": ...}}
 _ml_plate_buffer: dict[str, dict] = {}
 
-# State variable for physical gate trigger (manually triggered via petugas response / emergency action)
-local_servo_trigger: int = 0
+# State variables for physical gate triggers (manually triggered via petugas response / emergency action)
+local_servo_triggers: dict[str, int] = {"GATE_MASUK_1": 0, "GATE_KELUAR_1": 0}
 
 # Coordination maps to handle frontend-triggered webcam capture on RFID tap
 # Key: rfid_uid, Value: asyncio.Event
@@ -1171,13 +1171,14 @@ def proxy_camera_stream(camera_url: str):
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/check-trigger")
-async def check_gate_trigger():
+async def check_gate_trigger(gate_id: str = "GATE_MASUK_1"):
     """
     Called by ESP8266 via fast HTTP GET polling to check if gate should be opened.
     Returns: {"trigger": 1} if remote manual open is requested, otherwise {"trigger": 0}
     """
-    global local_servo_trigger
-    return {"trigger": local_servo_trigger}
+    global local_servo_triggers
+    trigger_val = local_servo_triggers.get(gate_id, 0)
+    return {"trigger": trigger_val}
 
 
 @router.post("/reset-trigger")
@@ -1185,12 +1186,12 @@ async def reset_gate_trigger(gate_id: str = "GATE_MASUK_1"):
     """
     Called by ESP8266 via HTTP POST after receiving a trigger to reset back to 0.
     """
-    global local_servo_trigger
-    local_servo_trigger = 0
-    logger.info(f"[HTTP Trigger] Reset local_servo_trigger to 0 for {gate_id}")
+    global local_servo_triggers
+    local_servo_triggers[gate_id] = 0
+    logger.info(f"[HTTP Trigger] Reset local_servo_triggers to 0 for {gate_id}")
     
     # Reset Firebase servo_trigger to 0
     from core.firebase import reset_physical_servo
     await reset_physical_servo(gate_id)
     
-    return {"status": "success", "trigger": local_servo_trigger}
+    return {"status": "success", "trigger": 0}

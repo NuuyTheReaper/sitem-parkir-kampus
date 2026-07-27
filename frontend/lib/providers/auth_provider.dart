@@ -97,6 +97,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<void> updateProfileState(String nama, String nimNpp) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_nama', nama);
+    await prefs.setString('user_nim_npp', nimNpp);
+    
+    if (state.role != null) {
+      state = AuthState(
+        isLoading: state.isLoading,
+        role: state.role,
+        error: state.error,
+        user: {'nama': nama, 'nim_npp': nimNpp},
+      );
+    }
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');

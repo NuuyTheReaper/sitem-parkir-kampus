@@ -23,10 +23,17 @@ def get_pending_vehicles(db: Session = Depends(get_db)):
     # List vehicles that need approval by officer
     return db.query(models.Vehicle).filter(models.Vehicle.status_validasi == models.ValidationStatusEnum.pending).all()
 
+@router.get("/vehicles/approved", response_model=List[VehicleResponse])
+def get_approved_vehicles(db: Session = Depends(get_db)):
+    # List vehicles that have been approved
+    return db.query(models.Vehicle).filter(models.Vehicle.status_validasi == models.ValidationStatusEnum.disetujui).all()
 @router.put("/vehicles/{vehicle_id}/verify", response_model=VehicleResponse)
-async def verify_vehicle(vehicle_id: int, status: str, db: Session = Depends(get_db)):
+async def verify_vehicle(vehicle_id: int, status: str, catatan: str = "", db: Session = Depends(get_db)):
     if status not in [models.ValidationStatusEnum.disetujui, models.ValidationStatusEnum.ditolak]:
         raise HTTPException(status_code=400, detail="Invalid status input")
+        
+    if status == models.ValidationStatusEnum.ditolak and not catatan:
+        raise HTTPException(status_code=400, detail="Catatan (alasan penolakan) wajib diisi")
         
     vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id).first()
     if not vehicle:
@@ -34,6 +41,10 @@ async def verify_vehicle(vehicle_id: int, status: str, db: Session = Depends(get
         
     # Update state and commit
     vehicle.status_validasi = status
+    if status == models.ValidationStatusEnum.ditolak:
+        vehicle.catatan = catatan
+    else:
+        vehicle.catatan = None
     db.commit()
     db.refresh(vehicle)
     try:
@@ -262,3 +273,29 @@ def get_activity_chart(db: Session = Depends(get_db)):
             "keluar": out_count
         })
     return results
+
+@router.get("/vehicles/search")
+def search_vehicles(query: str, db: Session = Depends(get_db)):
+    """Search vehicles by plat_nomor or jenis_kendaraan."""
+    vehicles = db.query(models.Vehicle).filter(
+        (models.Vehicle.plat_nomor.contains(query)) |
+        (models.Vehicle.jenis_kendaraan.contains(query))
+    ).limit(30).all()
+    
+    result = []
+    for v in vehicles:
+        owner = v.user
+        result.append({
+            "id": v.id,
+            "plat_nomor": v.plat_nomor,
+            "jenis_kendaraan": v.jenis_kendaraan,
+            "merek": v.merek,
+            "status_validasi": v.status_validasi.value if v.status_validasi else "pending",
+            "catatan": v.catatan,
+            "foto_stnk": v.foto_stnk,
+            "foto_plat_nomor": v.foto_plat_nomor,
+            "user_nama": owner.nama if owner else "Unknown",
+            "user_nim": owner.nim_npp if owner else "N/A"
+        })
+    return result
+

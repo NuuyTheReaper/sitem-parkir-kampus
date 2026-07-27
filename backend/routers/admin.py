@@ -50,9 +50,9 @@ def get_all_mahasiswa(db: Session = Depends(get_db)):
 @router.post("/mahasiswa", response_model=UserResponse)
 async def create_mahasiswa(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.nim_npp == user.nim_npp).first():
-        raise HTTPException(status_code=400, detail="NIM already registered")
+        raise HTTPException(status_code=400, detail="NIM ini sudah terdaftar pada pengguna lain")
     if user.rfid_uid and db.query(models.User).filter(models.User.rfid_uid == user.rfid_uid).first():
-        raise HTTPException(status_code=400, detail="RFID already registered")
+        raise HTTPException(status_code=400, detail="Kartu RFID ini sudah terdaftar pada pengguna lain")
         
     db_user = models.User(
         nim_npp=user.nim_npp,
@@ -84,7 +84,7 @@ async def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = 
     
     if user_update.nim_npp:
         if db.query(models.User).filter(models.User.nim_npp == user_update.nim_npp, models.User.id != user_id).first():
-            raise HTTPException(status_code=400, detail="NIM already registered")
+            raise HTTPException(status_code=400, detail="NIM ini sudah terdaftar pada pengguna lain")
         db_user.nim_npp = user_update.nim_npp
     if user_update.nama: db_user.nama = user_update.nama
     if user_update.prodi_id is not None: db_user.prodi_id = user_update.prodi_id
@@ -93,7 +93,7 @@ async def update_mahasiswa(user_id: int, user_update: UserUpdate, db: Session = 
         if user_update.rfid_uid != "":
             if user_update.rfid_uid != db_user.rfid_uid:
                 if db.query(models.User).filter(models.User.rfid_uid == user_update.rfid_uid, models.User.id != user_id).first():
-                    raise HTTPException(status_code=400, detail="RFID already registered")
+                    raise HTTPException(status_code=400, detail="Kartu RFID ini sudah terdaftar pada pengguna lain")
                 db_user.rfid_uid = user_update.rfid_uid
                 db_user.rfid_cards.clear()
                 db_user.rfid_cards.append(models.RFIDCard(rfid_uid=user_update.rfid_uid))
@@ -133,7 +133,7 @@ def get_all_petugas(db: Session = Depends(get_db)):
 @router.post("/petugas", response_model=UserResponse)
 async def create_petugas(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.nim_npp == user.nim_npp).first():
-        raise HTTPException(status_code=400, detail="NPP already registered")
+        raise HTTPException(status_code=400, detail="NPP ini sudah terdaftar pada pengguna lain")
         
     db_user = models.User(
         nim_npp=user.nim_npp,
@@ -159,7 +159,7 @@ async def update_petugas(user_id: int, user_update: UserUpdate, db: Session = De
         
     if user_update.nim_npp:
         if db.query(models.User).filter(models.User.nim_npp == user_update.nim_npp, models.User.id != user_id).first():
-            raise HTTPException(status_code=400, detail="NPP already registered")
+            raise HTTPException(status_code=400, detail="NPP ini sudah terdaftar pada pengguna lain")
         db_user.nim_npp = user_update.nim_npp
     if user_update.nama: db_user.nama = user_update.nama
     if user_update.password: db_user.password_hash = get_password_hash(user_update.password)
@@ -302,20 +302,28 @@ def get_parking_reports(db: Session = Depends(get_db)):
         })
     return result
 
-# ── Export Logs as CSV ──────────────────────────────────────
-@router.get("/reports/export-csv")
-def export_logs_csv(
+# ── Export Logs as PDF ──────────────────────────────────────
+from core.security import get_admin, get_password_hash
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.lib.units import inch
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
+@router.get("/reports/export-pdf")
+def export_logs_pdf(
     jenis: str = "semua",
     periode: str = "semua",
-    db: Session = Depends(get_db)
+    feedback: str = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_admin)
 ):
-    """Export parking logs as a downloadable CSV file, filtered by type and period."""
-    query = db.query(models.ParkingLog)
+    """Export operational report as a downloadable PDF file with feedback."""
     
-    # Filter by jenis
-    if jenis in ["masuk", "keluar"]:
-        query = query.filter(models.ParkingLog.jenis_aktivitas == jenis)
-        
+    # 1. Base Query for Parking Logs
+    query_logs = db.query(models.ParkingLog)
+    query_reqs = db.query(models.AccessRequest)
+    
     # Filter by periode
     if periode != "semua":
         jakarta_tz = timezone(timedelta(hours=7))
@@ -325,63 +333,190 @@ def export_logs_csv(
         
         if periode == "hari_ini":
             start_date_utc = today_start_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
-            query = query.filter(models.ParkingLog.waktu >= start_date_utc)
         elif periode == "7_hari":
-            start_date_jakarta = today_start_jakarta - timedelta(days=6)
-            start_date_utc = start_date_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
-            query = query.filter(models.ParkingLog.waktu >= start_date_utc)
+            start_date_utc = (today_start_jakarta - timedelta(days=6)).astimezone(timezone.utc).replace(tzinfo=None)
         elif periode == "30_hari":
-            start_date_jakarta = today_start_jakarta - timedelta(days=29)
-            start_date_utc = start_date_jakarta.astimezone(timezone.utc).replace(tzinfo=None)
-            query = query.filter(models.ParkingLog.waktu >= start_date_utc)
-
-    logs = query.order_by(models.ParkingLog.waktu.desc()).limit(1000).all()
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["No", "Nama", "NIM/NPP", "Plat Nomor", "Jenis Kendaraan", "Aktivitas", "Status Akses", "Waktu"])
-    
-    for idx, log in enumerate(logs, 1):
-        if log.emergency_guest_id:
-            guest = db.query(models.EmergencyGuest).filter(models.EmergencyGuest.id == log.emergency_guest_id).first()
-            user_nama = guest.nama if guest else "Tamu Darurat"
-            user_nim = "Tamu Darurat"
-            vehicle_plat = guest.plat_nomor if guest else "-"
-            vehicle_jenis = "Mobil/Motor"
-        else:
-            user = db.query(models.User).filter(models.User.id == log.user_id).first()
-            vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == log.vehicle_id).first()
-            user_nama = user.nama if user else "Unknown"
-            user_nim = user.nim_npp if user else "-"
-            vehicle_plat = vehicle.plat_nomor if vehicle else "-"
-            vehicle_jenis = vehicle.jenis_kendaraan if vehicle else "-"
+            start_date_utc = (today_start_jakarta - timedelta(days=29)).astimezone(timezone.utc).replace(tzinfo=None)
             
-        if log.status_akses == models.AccessStatusEnum.darurat:
-            status_akses_display = "Emergency gate"
-        elif log.status_akses == models.AccessStatusEnum.manual_petugas:
-            status_akses_display = "Manual"
-        elif log.status_akses == models.AccessStatusEnum.otomatis:
-            status_akses_display = "Otomatis"
-        else:
-            status_akses_display = log.status_akses
-        
-        writer.writerow([
-            idx,
-            user_nama,
-            user_nim,
-            vehicle_plat,
-            vehicle_jenis,
-            log.waktu.jenis_aktivitas if False else log.jenis_aktivitas, # Dummy to keep compile
-            status_akses_display,
-            to_jakarta_time(log.waktu).strftime("%Y-%m-%d %H:%M:%S") if log.waktu else "-",
-        ])
+        query_logs = query_logs.filter(models.ParkingLog.waktu >= start_date_utc)
+        query_reqs = query_reqs.filter(models.AccessRequest.waktu_request >= start_date_utc)
+
+    if jenis != "semua":
+        query_logs = query_logs.filter(models.ParkingLog.jenis_aktivitas == jenis)
+
+    # Calculate metrics
+    total_masuk = query_logs.filter(models.ParkingLog.jenis_aktivitas == "masuk").count()
+    total_keluar = query_logs.filter(models.ParkingLog.jenis_aktivitas == "keluar").count()
+    total_requests = query_reqs.count()
     
-    output.seek(0)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Emergency Exits (querying ParkingLog with emergency status)
+    emergency_logs = query_logs.filter(models.ParkingLog.status_akses == models.AccessStatusEnum.darurat).order_by(models.ParkingLog.waktu.desc()).limit(20).all()
+
+    # Generate PDF in memory
+    buffer = io.BytesIO()
+    
+    def draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.gray)
+        canvas.setStrokeColor(colors.gray)
+        canvas.setLineWidth(1)
+        canvas.line(40, 50, 555, 50)
+        footer_text = "Unit Pengelola Parkir, Sekolah Vokasi, Universitas Harkat Negeri\nArea Parkir Sekolah Vokasi Universitas Harkat Negeri - Jl. Mataram No.9, Pesurungan Lor, Kec. Margadana, Kota Tegal, Jawa Tengah"
+        y = 40
+        for line in footer_text.split('\n'):
+            canvas.drawString(40, y, line)
+            y -= 10
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=70)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    normal_style = styles['Normal']
+    normal_style.fontSize = 11
+    normal_style.leading = 14
+    normal_style.alignment = 4  # 4 is TA_JUSTIFY
+    
+    # 1. Header (Logo + Text)
+    import os
+    from reportlab.platypus import HRFlowable
+    from reportlab.lib.utils import ImageReader
+    logo_path = os.path.join(os.getcwd(), "univharkat.png")
+    
+    header_right_text = Paragraph("<font size=12 color='#808080'>Sekolah Vokasi<br/>Program Studi D-3 Teknik Komputer</font>", ParagraphStyle('HR', parent=normal_style, alignment=2))
+    
+    if os.path.exists(logo_path):
+        img_reader = ImageReader(logo_path)
+        orig_w, orig_h = img_reader.getSize()
+        aspect = orig_h / float(orig_w)
+        desired_width = 2.5 * inch
+        desired_height = desired_width * aspect
+        img = Image(logo_path, width=desired_width, height=desired_height)
+        
+        left_table = Table([[img]], colWidths=[desired_width])
+        left_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('VALIGN', (0, 0), (0, 0), 'CENTER'),
+            ('LEFTPADDING', (0, 0), (0, 0), 0),
+            ('RIGHTPADDING', (0, 0), (0, 0), 0),
+        ]))
+        header_table = Table([[left_table, header_right_text]], colWidths=[257, 258])
+    else:
+        inst_para = Paragraph("<font size=14 color='#8B0000'><b>Universitas Harkat Negeri</b></font>", normal_style)
+        header_table = Table([[inst_para, header_right_text]], colWidths=[257, 258])
+        
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('VALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('VALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(header_table)
+    elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#8B0000'), spaceBefore=2, spaceAfter=20))
+    
+    # 2. Metadata (Nomor, Lampiran, Perihal)
+    meta_data = [
+        ['Nomor', ':', f'001/LAP-PARKIR/{datetime.now().strftime("%m/%Y")}'],
+        ['Lampiran', ':', '-'],
+        ['Perihal', ':', 'Laporan Operasional Smart Campus Parking']
+    ]
+    meta_table = Table(meta_data, colWidths=[65, 15, 435], hAlign='LEFT')
+    meta_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING', (0, 0), (0, -1), 0),
+        ('RIGHTPADDING', (-1, 0), (-1, -1), 0),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 20))
+    
+    # 3. Body
+    elements.append(Paragraph("Kepada Yth.", normal_style))
+    elements.append(Paragraph("<b>Pimpinan / Koordinator Pengelola Parkir</b>", normal_style))
+    elements.append(Paragraph("Di Tempat", normal_style))
+    elements.append(Spacer(1, 15))
+    
+    body_text = f"Dengan Hormat,<br/><br/>Sehubungan dengan operasional sistem parkir pintar kampus untuk periode <b>{periode.replace('_', ' ').title()}</b>, berikut ini kami sampaikan laporan operasional dan rekapitulasi data kendaraan yang telah tercatat di dalam sistem, beserta kendala yang dilaporkan:"
+    elements.append(Paragraph(body_text, normal_style))
+    elements.append(Spacer(1, 15))
+    
+    # Table 1: Stats
+    metrics_data = [
+        ['No', 'Metrik Kinerja', 'Total Jumlah'],
+        ['1', 'Total Kendaraan Masuk', str(total_masuk)],
+        ['2', 'Total Kendaraan Keluar', str(total_keluar)],
+        ['3', 'Total Penggunaan Aplikasi (Request Akses)', str(total_requests)],
+        ['4', 'Total Insiden Darurat (Emergency Gate)', str(len(emergency_logs))]
+    ]
+    metrics_table = Table(metrics_data, colWidths=[35, 330, 150], hAlign='LEFT')
+    metrics_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(metrics_table)
+    elements.append(Spacer(1, 15))
+    
+    # Feedback
+    elements.append(Paragraph("<b>Catatan Kendala & Pengaduan (Feedback):</b>", normal_style))
+    elements.append(Spacer(1, 5))
+    if feedback and feedback.strip():
+        feedback_para = Paragraph(feedback.strip(), normal_style)
+        elements.append(feedback_para)
+    else:
+        # Give some empty space for manual writing
+        elements.append(Spacer(1, 40))
+    elements.append(Spacer(1, 20))
+    
+    # Closing
+    elements.append(Paragraph("Demikian surat laporan ini kami sampaikan. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.", normal_style))
+    elements.append(Spacer(1, 30))
+    
+    # Signature
+    print_time = datetime.now(timezone(timedelta(hours=7))).strftime('%d %B %Y')
+    sig_style = ParagraphStyle('SigStyle', parent=normal_style, alignment=0, spaceAfter=0, spaceBefore=0)
+    sig_data = [
+        ['', f'Tegal, {print_time}'],
+        ['', 'Petugas Lapangan'],
+        ['', ''],
+        ['', ''],
+        ['', ''],
+        ['', Paragraph(f"<u>{current_user.nama}</u>", sig_style)],
+        ['', Paragraph(f"NIP.{current_user.nim_npp}", sig_style)]
+    ]
+    sig_table = Table(sig_data, colWidths=[365, 150], hAlign='LEFT')
+    sig_table.setStyle(TableStyle([
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (1, 5), (1, 5), 0),
+        ('TOPPADDING', (1, 6), (1, 6), 0),
+    ]))
+    elements.append(sig_table)
+    
+    # Build PDF
+    doc.build(elements, onFirstPage=draw_footer, onLaterPages=draw_footer)
+    
+    buffer.seek(0)
+    filename = f"laporan_operasional_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8")),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=parking_logs_{timestamp}.csv"}
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 from pydantic import BaseModel

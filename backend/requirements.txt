@@ -11,3 +11,4 @@ pydantic-settings
 httpx
 opencv-python-headless
 
+reportlab

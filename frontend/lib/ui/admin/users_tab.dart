@@ -8,6 +8,7 @@ import '../shared/filter_toggle.dart';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../core/constants.dart';
+import 'package:dio/dio.dart';
 
 /// Users Tab - Unified management for Mahasiswa and Petugas
 class UsersTab extends ConsumerStatefulWidget {
@@ -775,8 +776,15 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        String msg = e.toString();
+        if (e is DioException && e.response?.data != null) {
+          final responseData = e.response!.data;
+          if (responseData is Map && responseData['detail'] != null) {
+            msg = responseData['detail'].toString();
+          }
+        }
         _errorText =
-            'Gagal ${_isEdit ? 'mengedit' : 'menambah'} ${widget.roleLabel}: $e';
+            'Gagal ${_isEdit ? 'mengedit' : 'menambah'} ${widget.roleLabel}: $msg';
         _isSaving = false;
       });
     }

@@ -23,7 +23,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect NIM/NPP or password",
+            detail="NIM/NPP atau password salah",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -52,3 +52,23 @@ def change_password(req: ChangePasswordRequest, current_user: models.User = Depe
     current_user.password_hash = get_password_hash(req.new_password)
     db.commit()
     return {"status": "success", "message": "Password berhasil diubah"}
+
+class ProfileUpdate(BaseModel):
+    nama: str
+    nim_npp: str
+
+@router.put("/profile", response_model=UserProfile)
+def update_profile(req: ProfileUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role != models.RoleEnum.admin:
+        raise HTTPException(status_code=403, detail="Hanya admin yang dapat mengubah profil")
+    
+    if req.nim_npp != current_user.nim_npp:
+        existing = db.query(models.User).filter(models.User.nim_npp == req.nim_npp).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="NIP/NPP sudah digunakan")
+            
+    current_user.nama = req.nama
+    current_user.nim_npp = req.nim_npp
+    db.commit()
+    db.refresh(current_user)
+    return UserProfile.from_orm(current_user)

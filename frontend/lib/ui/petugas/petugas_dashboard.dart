@@ -2700,7 +2700,7 @@ _PermintaanTabWithFilterState();
 
 class _PermintaanTabWithFilterState
 extends ConsumerState<PermintaanTabWithFilter> {
-String _selectedFilter = 'gerbang'; // 'gerbang' or 'stnk'
+String _selectedFilter = 'gerbang'; // 'gerbang', 'stnk_pending', 'stnk_approved'
 
 @override
 Widget build(BuildContext context) {
@@ -2717,8 +2717,13 @@ label: 'Permintaan Gerbang',
 icon: Icons.pending_actions_rounded,
 ),
 FilterOption(
-value: 'stnk',
-label: 'Verifikasi STNK',
+value: 'stnk_pending',
+label: 'STNK (Pending)',
+icon: Icons.hourglass_empty_rounded,
+),
+FilterOption(
+value: 'stnk_approved',
+label: 'STNK (Disetujui)',
 icon: Icons.verified_rounded,
 ),
 ],
@@ -2731,7 +2736,7 @@ onChanged: (value) => setState(() => _selectedFilter = value),
 Expanded(
 child: _selectedFilter == 'gerbang'
 ? AccessRequestQueueTab(onCountChanged: widget.onCountChanged)
-: const VerifikasiTab(),
+: VerifikasiTab(filterType: _selectedFilter == 'stnk_pending' ? 'pending' : 'disetujui'),
 ),
 ],
 );
@@ -3075,488 +3080,662 @@ label: const Text('Setujui & Buka Gate'),
 
 // ── VERIFIKASI STNK TAB ────────────────────────────────────
 class VerifikasiTab extends ConsumerStatefulWidget {
-const VerifikasiTab({super.key});
+  final String filterType;
+  const VerifikasiTab({super.key, required this.filterType});
 
-@override
-ConsumerState<VerifikasiTab> createState() => _VerifikasiTabState();
+  @override
+  ConsumerState<VerifikasiTab> createState() => _VerifikasiTabState();
 }
 
 class _VerifikasiTabState extends ConsumerState<VerifikasiTab> {
-Future<List<dynamic>> fetchPending() async {
-final response =
-await ref.read(dioProvider).get('petugas/vehicles/pending');
-return response.data;
-}
+  Future<List<dynamic>> fetchVehicles() async {
+    final endpoint = widget.filterType == 'pending' ? 'petugas/vehicles/pending' : 'petugas/vehicles/approved';
+    final response = await ref.read(dioProvider).get(endpoint);
+    return response.data;
+  }
 
-Future<void> _updateStatus(int id, String status) async {
-try {
-await ref
-.read(dioProvider)
-.put('petugas/vehicles/$id/verify?status=$status');
-setState(() {});
-if (!mounted) return;
-ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-content: Text(status == 'disetujui'
-? '✓ Kendaraan disetujui'
-: '✗ Kendaraan ditolak'),
-backgroundColor: status == 'disetujui' ? Colors.green : AppTheme.maroon,
-behavior: SnackBarBehavior.floating,
-shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-));
-} catch (e) {
-if (!mounted) return;
-ScaffoldMessenger.of(context)
-.showSnackBar(SnackBar(content: Text('Error: $e')));
-}
-}
+  Future<void> _updateStatus(int id, String status, {String? catatan}) async {
+    try {
+      final query = 'status=$status${catatan != null ? '&catatan=${Uri.encodeComponent(catatan)}' : ''}';
+      await ref.read(dioProvider).put('petugas/vehicles/$id/verify?$query');
+      setState(() {});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(status == 'disetujui' ? '✓ Kendaraan disetujui' : '✗ Kendaraan ditolak'),
+        backgroundColor: status == 'disetujui' ? Colors.green : AppTheme.maroon,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
 
-@override
-Widget build(BuildContext context) {
-return RefreshIndicator(
-color: AppTheme.maroon,
-onRefresh: () async => setState(() {}),
-child: FutureBuilder<List<dynamic>>(
-future: fetchPending(),
-builder: (context, snapshot) {
-if (snapshot.connectionState == ConnectionState.waiting) {
-return const Center(
-child: CircularProgressIndicator(color: AppTheme.maroon));
-}
-if (!snapshot.hasData || snapshot.data!.isEmpty) {
-return _buildEmptyState(Icons.fact_check_outlined,
-'Tidak ada kendaraan\nyang menunggu verifikasi');
-}
+  Future<void> _showRejectDialog(int vehicleId) async {
+    final _reasonController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tolak Kendaraan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Masukkan alasan penolakan:'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _reasonController,
+              decoration: const InputDecoration(
+                hintText: 'Contoh: STNK buram, Plat nomor tidak sesuai',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              if (_reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Alasan penolakan wajib diisi')),
+                );
+                return;
+              }
+              Navigator.pop(context, _reasonController.text.trim());
+            },
+            child: const Text('Tolak', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
 
-return ListView.builder(
-itemCount: snapshot.data!.length,
-padding: const EdgeInsets.all(16),
-itemBuilder: (context, index) {
-final v = snapshot.data![index];
-final isMotor = v['jenis_kendaraan'] == 'Motor';
-final hasStnk = v['foto_stnk'] != null &&
-v['foto_stnk'].toString().isNotEmpty;
-return Card(
-margin: const EdgeInsets.only(bottom: 12),
-child: Padding(
-padding: const EdgeInsets.all(16),
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-Row(
-children: [
-Container(
-width: 48,
-height: 48,
-decoration: BoxDecoration(
-color: AppTheme.maroonSurface,
-borderRadius: BorderRadius.circular(12),
-),
-child: Icon(
-isMotor
-? Icons.motorcycle_rounded
-: Icons.shield_rounded,
-color: AppTheme.maroon,
-size: 26,
-),
-),
-const SizedBox(width: 12),
-Expanded(
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-Text(v['plat_nomor'],
-style: const TextStyle(
-fontWeight: FontWeight.w800,
-fontSize: 20)),
-Text(
-'${v['jenis_kendaraan']} | User ID: ${v['user_id']}',
-style: const TextStyle(
-fontSize: 13, color: Colors.grey)),
-],
-),
-),
-Container(
-padding: const EdgeInsets.symmetric(
-horizontal: 10, vertical: 5),
-decoration: BoxDecoration(
-color: const Color(0xFFFFF3CC),
-borderRadius: BorderRadius.circular(8),
-border:
-Border.all(color: const Color(0xFFD4A843)),
-),
-child: const Text('PENDING',
-style: TextStyle(
-color: Color(0xFF8B6914),
-fontWeight: FontWeight.w700,
-fontSize: 11)),
-),
-],
-),
-const SizedBox(height: 12),
-// STNK photo indicator
-Container(
-padding: const EdgeInsets.all(10),
-decoration: BoxDecoration(
-color: hasStnk ? Colors.green[50] : Colors.orange[50],
-borderRadius: BorderRadius.circular(8),
-),
-child: Row(
-children: [
-Icon(
-hasStnk
-? Icons.image_rounded
-: Icons.image_not_supported_outlined,
-size: 16,
-color: hasStnk ? Colors.green : Colors.orange,
-),
-const SizedBox(width: 6),
-Expanded(
-child: Text(
-hasStnk
-? 'Foto STNK tersedia'
-: 'Foto STNK belum diupload',
-style: TextStyle(
-color:
-hasStnk ? Colors.green : Colors.orange,
-fontSize: 12),
-),
-),
-if (hasStnk)
-TextButton(
-onPressed: () => showStnkPhotoDialog(
-context, v['foto_stnk']),
-child: const Text('Lihat',
-style: TextStyle(fontSize: 12)),
-),
-],
-),
-),
-const Divider(height: 20),
-Row(
-children: [
-Expanded(
-child: OutlinedButton.icon(
-style: OutlinedButton.styleFrom(
-foregroundColor: AppTheme.maroon,
-side: const BorderSide(color: AppTheme.maroon),
-padding:
-const EdgeInsets.symmetric(vertical: 10),
-shape: RoundedRectangleBorder(
-borderRadius: BorderRadius.circular(8)),
-),
-onPressed: () =>
-_updateStatus(v['id'], 'ditolak'),
-icon: const Icon(Icons.close_rounded, size: 16),
-label: const Text('Tolak'),
-),
-),
-const SizedBox(width: 12),
-Expanded(
-flex: 2,
-child: ElevatedButton.icon(
-style: ElevatedButton.styleFrom(
-backgroundColor: Colors.green,
-foregroundColor: Colors.white,
-padding:
-const EdgeInsets.symmetric(vertical: 10),
-shape: RoundedRectangleBorder(
-borderRadius: BorderRadius.circular(8)),
-),
-onPressed: () =>
-_updateStatus(v['id'], 'disetujui'),
-icon: const Icon(Icons.check_rounded, size: 16),
-label: const Text('Setujui STNK'),
-),
-),
-],
-),
-],
-),
-),
-);
-},
-);
-},
-),
-);
-}
+    if (result != null) {
+      await _updateStatus(vehicleId, 'ditolak', catatan: result);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      color: AppTheme.maroon,
+      onRefresh: () async => setState(() {}),
+      child: FutureBuilder<List<dynamic>>(
+        future: fetchVehicles(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: AppTheme.maroon));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.fact_check_outlined, size: 64, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.filterType == 'pending' ? 'Tidak ada kendaraan\nyang menunggu verifikasi' : 'Belum ada kendaraan\nyang disetujui',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                  ),
+                ],
+              ),
+            );
+          }
+
+                return ListView.builder(
+                  itemCount: snapshot.data!.length,
+                  padding: const EdgeInsets.all(16),
+                  itemBuilder: (context, index) {
+                    final v = snapshot.data![index];
+                    final isMotor = v['jenis_kendaraan'] == 'Motor';
+                    final hasStnk = v['foto_stnk'] != null && v['foto_stnk'].toString().isNotEmpty;
+                    final hasPlat = v['foto_plat_nomor'] != null && v['foto_plat_nomor'].toString().isNotEmpty;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.maroonSurface,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    isMotor ? Icons.motorcycle_rounded : Icons.shield_rounded,
+                                    color: AppTheme.maroon,
+                                    size: 26,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(v['plat_nomor'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 22, letterSpacing: 0.5)),
+                                      const SizedBox(height: 2),
+                                      Text('${v['jenis_kendaraan']}${v['merek'] != null && v['merek'].toString().isNotEmpty ? ' • ${v['merek']}' : ''}',
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+                                      const SizedBox(height: 4),
+                                      Text('Pengaju: ${v['user_nama'] ?? "Unknown"} (${v['user_nim'] ?? "NIM N/A"})',
+                                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: widget.filterType == 'pending' ? const Color(0xFFFFF3CC) : Colors.green.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: widget.filterType == 'pending' ? const Color(0xFFD4A843) : Colors.green.shade300),
+                                  ),
+                                  child: Text(widget.filterType == 'pending' ? 'PENDING' : 'DISETUJUI',
+                                      style: TextStyle(
+                                          color: widget.filterType == 'pending' ? const Color(0xFF8B6914) : Colors.green.shade700,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // STNK photo indicator
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: hasStnk ? Colors.green[50] : Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(hasStnk ? Icons.image_rounded : Icons.image_not_supported_outlined, size: 16, color: hasStnk ? Colors.green : Colors.orange),
+                                  const SizedBox(width: 6),
+                                  Expanded(child: Text(hasStnk ? 'Foto STNK tersedia' : 'Foto STNK belum diupload', style: TextStyle(color: hasStnk ? Colors.green : Colors.orange, fontSize: 12))),
+                                  if (hasStnk)
+                                    TextButton(
+                                      onPressed: () => showPhotoDialog(context, v['foto_stnk'], title: 'Foto STNK'),
+                                      child: const Text('Lihat', style: TextStyle(fontSize: 12)),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            // Plat nomor photo indicator
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: hasPlat ? Colors.green[50] : Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(hasPlat ? Icons.image_rounded : Icons.image_not_supported_outlined, size: 16, color: hasPlat ? Colors.green : Colors.orange),
+                                  const SizedBox(width: 6),
+                                  Expanded(child: Text(hasPlat ? 'Foto Plat Nomor tersedia' : 'Foto Plat Nomor belum diupload', style: TextStyle(color: hasPlat ? Colors.green : Colors.orange, fontSize: 12))),
+                                  if (hasPlat)
+                                    TextButton(
+                                      onPressed: () => showPhotoDialog(context, v['foto_plat_nomor'], title: 'Foto Plat Nomor'),
+                                      child: const Text('Lihat', style: TextStyle(fontSize: 12)),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (widget.filterType == 'pending') ...[
+                              const Divider(height: 20),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppTheme.maroon,
+                                        side: const BorderSide(color: AppTheme.maroon),
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: () => _showRejectDialog(v['id']),
+                                      icon: const Icon(Icons.close_rounded, size: 16),
+                                      label: const Text('Tolak'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 2,
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      onPressed: () => _updateStatus(v['id'], 'disetujui'),
+                                      icon: const Icon(Icons.check_rounded, size: 16),
+                                      label: const Text('Setujui STNK'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+    );
+  }
 }
 
 // ── SEARCH MEMBER TAB ──────────────────────────────────────
 class SearchMemberTab extends ConsumerStatefulWidget {
-const SearchMemberTab({super.key});
+  const SearchMemberTab({super.key});
 
-@override
-ConsumerState<SearchMemberTab> createState() => _SearchMemberTabState();
+  @override
+  ConsumerState<SearchMemberTab> createState() => _SearchMemberTabState();
 }
 
 class _SearchMemberTabState extends ConsumerState<SearchMemberTab> {
-final _searchController = TextEditingController();
-List<dynamic> _results = [];
-bool _loading = false;
+  final _searchController = TextEditingController();
+  List<dynamic> _results = [];
+  bool _loading = false;
+  String _searchType = 'pengguna'; // 'pengguna' or 'kendaraan'
 
-void _search() async {
-if (_searchController.text.isEmpty) return;
-setState(() => _loading = true);
-try {
-final res = await ref.read(dioProvider).get('petugas/search',
-queryParameters: {'query': _searchController.text});
-setState(() => _results = res.data);
-} catch (e) {
-if (mounted)
-ScaffoldMessenger.of(context)
-.showSnackBar(SnackBar(content: Text('Error: $e')));
-} finally {
-setState(() => _loading = false);
-}
-}
+  void _search() async {
+    if (_searchController.text.isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final endpoint = _searchType == 'pengguna' ? 'petugas/search' : 'petugas/vehicles/search';
+      final res = await ref.read(dioProvider).get(endpoint,
+          queryParameters: {'query': _searchController.text});
+      setState(() => _results = res.data);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
 
-void _toggleFlag(int userId, bool currentStatus) async {
-final reasonController = TextEditingController();
-bool? confirmed = await showDialog(
-context: context,
-builder: (ctx) => AlertDialog(
-title: Text(currentStatus ? 'Hapus Peringatan?' : 'Tambah Peringatan?'),
-content: currentStatus
-? const Text(
-'Yakin ingin menghapus status peringatan pada user ini?')
-: Column(
-mainAxisSize: MainAxisSize.min,
-children: [
-const Text(
-'User ini akan ditandai pada setiap request akses masa depan.'),
-const SizedBox(height: 12),
-TextField(
-controller: reasonController,
-decoration: const InputDecoration(
-hintText:
-'Alasan peringatan (misal: Sering parkir sembarang)')),
-],
-),
-actions: [
-TextButton(
-onPressed: () => Navigator.pop(ctx, false),
-child: const Text('Batal')),
-TextButton(
-onPressed: () => Navigator.pop(ctx, true),
-style: TextButton.styleFrom(
-foregroundColor: currentStatus ? Colors.green : Colors.orange),
-child: Text(currentStatus ? 'HAPUS' : 'SET FLAG'),
-),
-],
-),
-);
+  void _toggleFlag(int userId, bool currentStatus) async {
+    final reasonController = TextEditingController();
+    bool? confirmed = await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(currentStatus ? 'Hapus Peringatan?' : 'Tambah Peringatan?'),
+        content: currentStatus
+            ? const Text('Yakin ingin menghapus status peringatan pada user ini?')
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('User ini akan ditandai pada setiap request akses masa depan.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: reasonController,
+                      decoration: const InputDecoration(
+                          hintText: 'Alasan peringatan (misal: Sering parkir sembarang)')),
+                ],
+              ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(
+                foregroundColor: currentStatus ? Colors.green : Colors.orange),
+            child: Text(currentStatus ? 'HAPUS' : 'SET FLAG'),
+          ),
+        ],
+      ),
+    );
 
-if (confirmed == true && mounted) {
-try {
-await ref.read(dioProvider).put('petugas/flag-user/$userId',
-queryParameters: {
-'is_flagged': !currentStatus,
-'reason': reasonController.text
-});
-_search(); // Refresh
-} catch (e) {
-if (mounted)
-ScaffoldMessenger.of(context)
-.showSnackBar(SnackBar(content: Text('Gagal: $e')));
-}
-}
-}
+    if (confirmed == true && mounted) {
+      try {
+        await ref.read(dioProvider).put('petugas/flag-user/$userId',
+            queryParameters: {
+              'is_flagged': !currentStatus,
+              'reason': reasonController.text
+            });
+        _search(); // Refresh
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Gagal: $e')));
+        }
+      }
+    }
+  }
 
-@override
-Widget build(BuildContext context) {
-return Scaffold(
-backgroundColor: const Color(0xFFF8F4F4),
-body: Column(
-children: [
-Padding(
-padding: const EdgeInsets.all(16),
-child: TextField(
-controller: _searchController,
-decoration: InputDecoration(
-hintText: 'Cari NIM, Nama, atau Plat Nomor...',
-prefixIcon: const Icon(IconlyLight.search),
-suffixIcon: IconButton(
-icon: const Icon(Icons.close_rounded),
-onPressed: () => _searchController.clear()),
-filled: true,
-fillColor: Colors.white,
-border: OutlineInputBorder(
-borderRadius: BorderRadius.circular(16),
-borderSide: BorderSide.none,
-),
-contentPadding: const EdgeInsets.symmetric(vertical: 16),
-),
-onSubmitted: (_) => _search(),
-),
-),
-if (_loading) const LinearProgressIndicator(color: AppTheme.maroon),
-Expanded(
-child: _results.isEmpty
-? ModernEmptyState(
-icon: Icons.person_search_rounded,
-title: 'Cari Pengguna',
-subtitle:
-'Ketikkan NIM, Nama, atau Plat Nomor\nuntuk melihat detail member.',
-)
-: ListView.builder(
-itemCount: _results.length,
-padding:
-const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-itemBuilder: (context, index) {
-final u = _results[index];
-final isFlagged = u['is_flagged'] == true;
-return Container(
-margin: const EdgeInsets.only(bottom: 12),
-padding: const EdgeInsets.all(16),
-decoration: BoxDecoration(
-color: Colors.white,
-borderRadius: BorderRadius.circular(16),
-border: isFlagged
-? Border.all(
-color: Colors.orange.withOpacity(0.5))
-: null,
-boxShadow: [],
-),
-child: Row(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-CircleAvatar(
-radius: 24,
-backgroundColor: isFlagged
-? Colors.orange[100]
-: AppTheme.maroonSurface,
-child: Icon(
-isFlagged
-? IconlyLight.danger
-: IconlyLight.profile,
-color: isFlagged
-? Colors.orange
-: AppTheme.maroon),
-),
-const SizedBox(width: 16),
-Expanded(
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-Row(
-mainAxisAlignment:
-MainAxisAlignment.spaceBetween,
-children: [
-Expanded(
-child: Text(u['nama'],
-style: const TextStyle(
-fontWeight: FontWeight.w800,
-fontSize: 16))),
-IconButton(
-icon: Icon(
-isFlagged
-? Icons.flag
-: Icons.flag_outlined,
-color: isFlagged
-? Colors.orange
-: Colors.grey,
-size: 20),
-onPressed: () =>
-_toggleFlag(u['id'], isFlagged),
-padding: EdgeInsets.zero,
-constraints: const BoxConstraints(),
-),
-],
-),
-const SizedBox(height: 4),
-Text('NIM: ${u['nim']}',
-style: TextStyle(
-color: Colors.grey[600],
-fontSize: 13)),
-const SizedBox(height: 12),
-if ((u['vehicles'] as List).isNotEmpty) ...[
-Wrap(
-spacing: 8,
-runSpacing: 8,
-children: (u['vehicles'] as List)
-.map((v) => Container(
-padding:
-const EdgeInsets.symmetric(
-horizontal: 8,
-vertical: 4),
-decoration: BoxDecoration(
-color: AppTheme.maroon
-.withOpacity(0.05),
-borderRadius:
-BorderRadius.circular(8),
-),
-child: Row(
-mainAxisSize:
-MainAxisSize.min,
-children: [
-Icon(
-v['jenis'] == 'Motor'
-? Icons
-.motorcycle_rounded
-: Icons
-.directions_car_rounded,
-size: 14,
-color: AppTheme.maroon),
-const SizedBox(width: 4),
-Text(v['plat'],
-style: const TextStyle(
-fontSize: 12,
-fontWeight:
-FontWeight.w700,
-color: AppTheme
-.maroon)),
-],
-),
-))
-.toList(),
-),
-] else ...[
-Text('Belum ada kendaraan',
-style: TextStyle(
-color: Colors.grey[400],
-fontSize: 12,
-fontStyle: FontStyle.italic)),
-],
-if (isFlagged) ...[
-const SizedBox(height: 12),
-Container(
-padding: const EdgeInsets.symmetric(
-horizontal: 10, vertical: 6),
-decoration: BoxDecoration(
-color: Colors.orange.withOpacity(0.1),
-borderRadius:
-BorderRadius.circular(8)),
-child: Row(
-children: [
-const Icon(Icons.info_outline,
-size: 14, color: Colors.orange),
-const SizedBox(width: 8),
-Expanded(
-child: Text(
-'Ket: ${u['flag_reason']}',
-style: const TextStyle(
-color: Colors.orange,
-fontSize: 11,
-fontWeight:
-FontWeight.w600))),
-],
-),
-),
-],
-],
-),
-),
-],
-),
-);
-},
-),
-),
-],
-),
-);
-}
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F4F4),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: FilterToggle(
+              options: const [
+                FilterOption(value: 'pengguna', label: 'Cari Pengguna', icon: Icons.person_search_rounded),
+                FilterOption(value: 'kendaraan', label: 'Cari Kendaraan', icon: Icons.directions_car_rounded),
+              ],
+              selectedValue: _searchType,
+              onChanged: (val) {
+                setState(() {
+                  _searchType = val;
+                  _results = [];
+                  _searchController.clear();
+                });
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: _searchType == 'pengguna' ? 'Cari NIM, Nama...' : 'Cari Plat Nomor, Jenis...',
+                prefixIcon: const Icon(IconlyLight.search),
+                suffixIcon: IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _results = []);
+                    }),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              onSubmitted: (_) => _search(),
+            ),
+          ),
+          if (_loading) const LinearProgressIndicator(color: AppTheme.maroon),
+          Expanded(
+            child: _results.isEmpty
+                ? ModernEmptyState(
+                    icon: _searchType == 'pengguna' ? Icons.person_search_rounded : Icons.search_rounded,
+                    title: _searchType == 'pengguna' ? 'Cari Pengguna' : 'Cari Kendaraan',
+                    subtitle: 'Masukkan kata kunci untuk mencari data.',
+                  )
+                : ListView.builder(
+                    itemCount: _results.length,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemBuilder: (context, index) {
+                      if (_searchType == 'pengguna') {
+                        return _buildUserCard(_results[index]);
+                      } else {
+                        return _buildVehicleCard(_results[index]);
+                      }
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserCard(dynamic u) {
+    final isFlagged = u['is_flagged'] == true;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isFlagged ? Border.all(color: Colors.orange.withOpacity(0.5)) : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: isFlagged ? Colors.orange[100] : AppTheme.maroonSurface,
+            child: Icon(
+                isFlagged ? IconlyLight.danger : IconlyLight.profile,
+                color: isFlagged ? Colors.orange : AppTheme.maroon),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                        child: Text(u['nama'],
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 16))),
+                    IconButton(
+                      icon: Icon(
+                          isFlagged ? Icons.flag : Icons.flag_outlined,
+                          color: isFlagged ? Colors.orange : Colors.grey,
+                          size: 20),
+                      onPressed: () => _toggleFlag(u['id'], isFlagged),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('NIM: ${u['nim']}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                const SizedBox(height: 12),
+                if ((u['vehicles'] as List).isNotEmpty) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: (u['vehicles'] as List)
+                        .map((v) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.maroon.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                      v['jenis'] == 'Motor'
+                                          ? Icons.motorcycle_rounded
+                                          : Icons.directions_car_rounded,
+                                      size: 14,
+                                      color: AppTheme.maroon),
+                                  const SizedBox(width: 4),
+                                  Text(v['plat'],
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.maroon)),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                ] else ...[
+                  Text('Belum ada kendaraan',
+                      style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic)),
+                ],
+                if (isFlagged) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline,
+                            size: 14, color: Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: Text('Ket: ${u['flag_reason']}',
+                                style: const TextStyle(
+                                    color: Colors.orange,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600))),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVehicleCard(dynamic v) {
+    final isMotor = v['jenis_kendaraan'] == 'Motor';
+    final hasStnk = v['foto_stnk'] != null && v['foto_stnk'].toString().isNotEmpty;
+    final hasPlat = v['foto_plat_nomor'] != null && v['foto_plat_nomor'].toString().isNotEmpty;
+    
+    Color statusColor;
+    String statusText = (v['status_validasi'] ?? 'pending').toString().toUpperCase();
+    if (v['status_validasi'] == 'disetujui') statusColor = Colors.green;
+    else if (v['status_validasi'] == 'ditolak') statusColor = Colors.red;
+    else statusColor = Colors.orange;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppTheme.maroonSurface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isMotor ? Icons.motorcycle_rounded : Icons.shield_rounded,
+                  color: AppTheme.maroon,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(v['plat_nomor'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 22, letterSpacing: 0.5)),
+                    const SizedBox(height: 2),
+                    Text('${v['jenis_kendaraan']}${v['merek'] != null && v['merek'].toString().isNotEmpty ? ' • ${v['merek']}' : ''}',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+                    const SizedBox(height: 4),
+                    Text('Pengaju: ${v['user_nama'] ?? "Unknown"} (${v['user_nim'] ?? "N/A"})',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withOpacity(0.5)),
+                ),
+                child: Text(statusText,
+                    style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11)),
+              ),
+            ],
+          ),
+          if (v['status_validasi'] == 'ditolak' && v['catatan'] != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.red, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Alasan: ${v['catatan']}', style: const TextStyle(color: Colors.red, fontSize: 12))),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: hasStnk ? Colors.green[50] : Colors.orange[50], borderRadius: BorderRadius.circular(8)),
+                  child: Row(
+                    children: [
+                      Icon(hasStnk ? Icons.image_rounded : Icons.image_not_supported_outlined, size: 16, color: hasStnk ? Colors.green : Colors.orange),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(hasStnk ? 'STNK' : 'No STNK', style: TextStyle(color: hasStnk ? Colors.green : Colors.orange, fontSize: 11))),
+                      if (hasStnk)
+                        GestureDetector(
+                          onTap: () => showPhotoDialog(context, v['foto_stnk'], title: 'Foto STNK'),
+                          child: const Text('Lihat', style: TextStyle(fontSize: 11, color: Colors.blue, decoration: TextDecoration.underline)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: hasPlat ? Colors.green[50] : Colors.orange[50], borderRadius: BorderRadius.circular(8)),
+                  child: Row(
+                    children: [
+                      Icon(hasPlat ? Icons.image_rounded : Icons.image_not_supported_outlined, size: 16, color: hasPlat ? Colors.green : Colors.orange),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(hasPlat ? 'Plat' : 'No Plat', style: TextStyle(color: hasPlat ? Colors.green : Colors.orange, fontSize: 11))),
+                      if (hasPlat)
+                        GestureDetector(
+                          onTap: () => showPhotoDialog(context, v['foto_plat_nomor'], title: 'Foto Plat Nomor'),
+                          child: const Text('Lihat', style: TextStyle(fontSize: 11, color: Colors.blue, decoration: TextDecoration.underline)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Shared Helpers ─────────────────────────────────────────

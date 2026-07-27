@@ -20,6 +20,21 @@ def update_database():
         except Exception as e:
             print(f"Column 'flag_reason' might already exist: {e}")
 
+        # Add foto_plat_nomor to vehicles if it doesn't exist
+        print("Checking for existing columns in 'vehicles' table...")
+        try:
+            conn.execute(text("ALTER TABLE vehicles ADD COLUMN foto_plat_nomor VARCHAR(255)"))
+            print("Added 'foto_plat_nomor' column to vehicles.")
+        except Exception as e:
+            print(f"Column 'foto_plat_nomor' might already exist: {e}")
+
+        # Add catatan to vehicles if it doesn't exist
+        try:
+            conn.execute(text("ALTER TABLE vehicles ADD COLUMN catatan VARCHAR(255)"))
+            print("Added 'catatan' column to vehicles.")
+        except Exception as e:
+            print(f"Column 'catatan' might already exist: {e}")
+
         print("Updating 'announcements' table...")
         try:
             conn.execute(text("""

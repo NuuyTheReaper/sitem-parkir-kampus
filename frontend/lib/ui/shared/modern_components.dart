@@ -115,7 +115,7 @@ class ModernEmptyState extends StatelessWidget {
   }
 }
 
-void showStnkPhotoDialog(BuildContext context, String path) {
+void showPhotoDialog(BuildContext context, String path, {String title = 'Foto STNK'}) {
   showDialog(
     context: context,
     builder: (ctx) => Dialog(
@@ -128,9 +128,9 @@ void showStnkPhotoDialog(BuildContext context, String path) {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Foto STNK',
+                Text(title,
                     style:
-                        TextStyle(fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: -0.2)),
+                        const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: -0.2)),
                 IconButton(
                   icon: Icon(Icons.close_rounded, color: AppTheme.slate600),
                   onPressed: () => Navigator.pop(ctx),
@@ -172,4 +172,8 @@ void showStnkPhotoDialog(BuildContext context, String path) {
       ),
     ),
   );
+}
+
+void showStnkPhotoDialog(BuildContext context, String path) {
+  showPhotoDialog(context, path, title: 'Foto STNK');
 }

@@ -27,12 +27,20 @@ class _LogsTabState extends ConsumerState<LogsTab> {
   bool _isFilterExpanded = false;
   bool _isExporting = false;
 
+  Future<List<dynamic>>? _logsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _logsFuture = fetchLogs();
+  }
+
   Future<List<dynamic>> fetchLogs() async {
     final response = await ref.read(dioProvider).get('admin/reports');
     return response.data;
   }
 
-  void _exportCsv() async {
+  Future<void> _exportPdf(String feedbackText) async {
     if (_isExporting) return;
     setState(() => _isExporting = true);
 
@@ -46,7 +54,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             ),
             SizedBox(width: 12),
-            Text('Menyiapkan laporan CSV...'),
+            Text('Menyiapkan laporan PDF...'),
           ],
         ),
         backgroundColor: AppTheme.maroon,
@@ -58,17 +66,18 @@ class _LogsTabState extends ConsumerState<LogsTab> {
 
     try {
       final response = await ref.read(dioProvider).get<List<int>>(
-        'admin/reports/export-csv',
+        'admin/reports/export-pdf',
         queryParameters: {
           'jenis': _typeFilter,
           'periode': _periodFilter,
+          'feedback': feedbackText,
         },
         options: Options(responseType: ResponseType.bytes),
       );
 
       if (response.data != null) {
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-        final filename = 'parking_logs_$timestamp.csv';
+        final filename = 'laporan_parkir_$timestamp.pdf';
         downloadBytes(response.data!, filename);
 
         if (!context.mounted) return;
@@ -79,7 +88,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
               children: [
                 Icon(Icons.download_done_rounded, color: Colors.white, size: 18),
                 SizedBox(width: 8),
-                Text('Laporan CSV berhasil diunduh'),
+                Text('Laporan PDF berhasil diunduh'),
               ],
             ),
             backgroundColor: Colors.green,
@@ -97,7 +106,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
             children: [
               const Icon(Icons.error_outline, color: Colors.white, size: 18),
               const SizedBox(width: 8),
-              Expanded(child: Text('Gagal mengunduh CSV: ${e.toString()}')),
+              Expanded(child: Text('Gagal mengunduh PDF: ${e.toString()}')),
             ],
           ),
           backgroundColor: AppTheme.maroon,
@@ -110,6 +119,57 @@ class _LogsTabState extends ConsumerState<LogsTab> {
         setState(() => _isExporting = false);
       }
     }
+  }
+
+  Future<void> _showPrintDialog() async {
+    final feedbackController = TextEditingController();
+    
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Cetak Laporan PDF', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.maroon)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Masukkan catatan kendala operasional atau pengaduan hari ini (opsional):', style: TextStyle(fontSize: 14)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: feedbackController,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: 'Contoh: CCTV Gate 1 buram, butuh perbaikan...',
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _exportPdf(feedbackController.text);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.maroon,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.print, size: 16),
+              label: const Text('Cetak'),
+            ),
+          ],
+        );
+      }
+    );
   }
 
   String _typeLabel(String filter) {
@@ -226,10 +286,10 @@ class _LogsTabState extends ConsumerState<LogsTab> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         visualDensity: VisualDensity.compact,
       ),
-      onPressed: _exportCsv,
-      icon: const Icon(IconlyLight.download, size: 16),
+      onPressed: _showPrintDialog,
+      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
       label: const Text(
-        'CSV',
+        'PDF',
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
       ),
     );
@@ -286,10 +346,10 @@ class _LogsTabState extends ConsumerState<LogsTab> {
                 ),
                 elevation: 0,
               ),
-              onPressed: _exportCsv,
-              icon: const Icon(IconlyLight.download, size: 18),
+              onPressed: _showPrintDialog,
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
               label: const Text(
-                'Cetak CSV Laporan',
+                'Cetak Laporan PDF',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
@@ -301,7 +361,16 @@ class _LogsTabState extends ConsumerState<LogsTab> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(refreshTriggerProvider);
+    _logsFuture ??= fetchLogs();
+
+    // If the provider changes (e.g. from a pull-to-refresh elsewhere), we could update _logsFuture here,
+    // but typically refreshTriggerProvider is used to trigger a rebuild. We'll re-fetch when it changes.
+    ref.listen(refreshTriggerProvider, (previous, next) {
+      setState(() {
+        _logsFuture = fetchLogs();
+      });
+    });
+    
     return Column(
       children: [
         _buildFilterBar(),
@@ -309,7 +378,7 @@ class _LogsTabState extends ConsumerState<LogsTab> {
         // Log list
         Expanded(
           child: FutureBuilder<List<dynamic>>(
-            future: fetchLogs(),
+            future: _logsFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(

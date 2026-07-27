@@ -23,6 +23,9 @@ router = APIRouter(prefix="/api/mahasiswa", tags=["Mahasiswa"], dependencies=[De
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "stnk")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+UPLOAD_PLAT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "plat_nomor")
+os.makedirs(UPLOAD_PLAT_DIR, exist_ok=True)
+
 @router.get("/vehicles", response_model=List[VehicleResponse])
 def get_my_vehicles(current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
     return db.query(models.Vehicle).filter(models.Vehicle.user_id == current_user.id).all()
@@ -97,6 +100,51 @@ async def upload_stnk(vehicle_id: int, file: UploadFile = File(...), current_use
         pass
         
     return {"status": "success", "message": "Foto STNK berhasil diupload", "path": vehicle.foto_stnk}
+
+@router.post("/vehicles/{vehicle_id}/upload-plat-nomor")
+async def upload_plat_nomor(vehicle_id: int, file: UploadFile = File(...), current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
+    """Upload foto plat nomor untuk verifikasi kendaraan."""
+    vehicle = db.query(models.Vehicle).filter(
+        models.Vehicle.id == vehicle_id,
+        models.Vehicle.user_id == current_user.id
+    ).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Kendaraan tidak ditemukan")
+    
+    # Validate file type
+    import mimetypes
+    content_type = file.content_type
+    if content_type == "application/octet-stream" and file.filename:
+        guessed_type, _ = mimetypes.guess_type(file.filename)
+        if guessed_type:
+            content_type = guessed_type
+
+    allowed_types = ["image/jpeg", "image/png", "image/webp"]
+    if content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Format file harus JPG, PNG, atau WebP")
+    
+    # Save file
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"plat_{vehicle_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_PLAT_DIR, filename)
+    
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    # Update vehicle record
+    vehicle.foto_plat_nomor = f"/uploads/plat_nomor/{filename}"
+    db.commit()
+    db.refresh(vehicle)
+    
+    # ── Real-time WebSocket notification ──
+    try:
+        from routers.iot import manager
+        await manager.broadcast({"type": "update", "message": "plat_nomor_uploaded"})
+    except Exception:
+        pass
+        
+    return {"status": "success", "message": "Foto plat nomor berhasil diupload", "path": vehicle.foto_plat_nomor}
 
 @router.get("/status-parkir")
 def get_parking_status(current_user: models.User = Depends(get_mahasiswa), db: Session = Depends(get_db)):
@@ -241,6 +289,16 @@ async def delete_vehicle(vehicle_id: int, current_user: models.User = Depends(ge
         except Exception:
             pass  # Jangan gagalkan penghapusan data DB jika gagal menghapus file fisik
             
+    # Hapus file foto plat nomor jika ada
+    if vehicle.foto_plat_nomor:
+        try:
+            filename = os.path.basename(vehicle.foto_plat_nomor)
+            filepath = os.path.join(UPLOAD_PLAT_DIR, filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
+
     db.delete(vehicle)
     db.commit()
     

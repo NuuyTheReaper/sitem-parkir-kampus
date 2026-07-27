@@ -19,6 +19,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
   late final TextEditingController _oldPwCtrl;
   late final TextEditingController _newPwCtrl;
   late final TextEditingController _confirmPwCtrl;
+  late final TextEditingController _editNamaCtrl;
+  late final TextEditingController _editNipCtrl;
 
   @override
   void initState() {
@@ -27,6 +29,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
     _oldPwCtrl = TextEditingController();
     _newPwCtrl = TextEditingController();
     _confirmPwCtrl = TextEditingController();
+    _editNamaCtrl = TextEditingController();
+    _editNipCtrl = TextEditingController();
   }
 
   @override
@@ -34,6 +38,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
     _oldPwCtrl.dispose();
     _newPwCtrl.dispose();
     _confirmPwCtrl.dispose();
+    _editNamaCtrl.dispose();
+    _editNipCtrl.dispose();
     super.dispose();
   }
 
@@ -203,22 +209,30 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                                 ),
                               ),
                             ),
-                            Positioned(
-                              bottom: 2,
-                              right: 2,
-                              child: Container(
-                                padding: const EdgeInsets.all(5),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.edit,
-                                  size: 14,
-                                  color: Colors.grey,
+                            if (!isMahasiswa && profile['role'] == 'admin')
+                              Positioned(
+                                bottom: 2,
+                                right: 2,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    _editNamaCtrl.text = profile['nama'] ?? '';
+                                    _editNipCtrl.text = profile['nim_npp'] ?? '';
+                                    setState(() => _currentScreen = 'editProfile');
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.edit,
+                                      size: 16,
+                                      color: AppTheme.maroon,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -314,6 +328,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
 
   Widget _buildAccountInfoScreen(Map<String, dynamic> profile) {
     final bool isMahasiswa = profile['role'] == 'mahasiswa';
+    final bool isAdmin = profile['role'] == 'admin';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -510,6 +525,99 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
     );
   }
 
+  Widget _buildEditProfileScreen() {
+    bool isLoading = false;
+    
+    return StatefulBuilder(
+      builder: (context, setScreenState) => Scaffold(
+        backgroundColor: const Color(0xFFF8F9FA),
+        appBar: AppBar(
+          title: const Text('Edit Profil', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.black),
+            onPressed: () => setState(() => _currentScreen = 'main'),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _editNamaCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nama Lengkap',
+                  prefixIcon: Icon(IconlyLight.profile, size: 20),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _editNipCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'NIP / NPP',
+                  prefixIcon: Icon(IconlyLight.document, size: 20),
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.maroon,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  ),
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (_editNamaCtrl.text.isEmpty || _editNipCtrl.text.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Nama dan NIP tidak boleh kosong')),
+                            );
+                            return;
+                          }
+                          setScreenState(() => isLoading = true);
+                          try {
+                            await ref.read(dioProvider).put('auth/profile', data: {
+                              'nama': _editNamaCtrl.text,
+                              'nim_npp': _editNipCtrl.text,
+                            });
+                            // Reload profile
+                            final authNotif = ref.read(authProvider.notifier);
+                            await authNotif.updateProfileState(_editNamaCtrl.text, _editNipCtrl.text);
+                            _profileFuture = authNotif.getProfile();
+                            
+                            if (!context.mounted) return;
+                            setState(() => _currentScreen = 'main');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Profil berhasil diperbarui'),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } catch (e) {
+                            setScreenState(() => isLoading = false);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Gagal memperbarui profil: ${e.toString()}'), backgroundColor: AppTheme.maroon),
+                            );
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                      : const Text('Simpan Perubahan', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>?>(
@@ -529,6 +637,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
             return _buildAccountInfoScreen(profile);
           case 'changePassword':
             return _buildChangePasswordScreen();
+          case 'editProfile':
+            return _buildEditProfileScreen();
           default:
             return _buildMainScreen(profile);
         }

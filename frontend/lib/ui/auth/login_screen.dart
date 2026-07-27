@@ -18,6 +18,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _nimController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  String? _validationError;
 
   @override
   void dispose() {
@@ -27,8 +28,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _handleLogin() async {
+    final nimText = _nimController.text.trim();
+    if (nimText.length < 8) {
+      setState(() {
+        _validationError = 'Minimal 8 karakter';
+      });
+      return;
+    } else if (nimText.length > 15) {
+      setState(() {
+        _validationError = 'Maksimal 15 karakter';
+      });
+      return;
+    }
+    
+    setState(() {
+      _validationError = null;
+    });
+
     final success = await ref.read(authProvider.notifier).login(
-          _nimController.text,
+          nimText,
           _passwordController.text,
         );
 
@@ -47,18 +65,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => nextScreen),
-      );
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ref.read(authProvider).error ?? 'Login gagal'),
-          backgroundColor: AppTheme.maroon,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
       );
     }
   }
@@ -304,7 +310,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                           height: 1.5,
                                         ),
                                       ),
-                                      const SizedBox(height: 40),
+                                      if (authState.error != null || _validationError != null) ...[
+                                        const SizedBox(height: 24),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.maroon.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(color: AppTheme.maroon.withValues(alpha: 0.2)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(Icons.error_outline, color: AppTheme.maroon, size: 20),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  _validationError ?? authState.error!,
+                                                  style: const TextStyle(
+                                                    color: AppTheme.maroon,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ).animate().fadeIn(duration: const Duration(milliseconds: 300)).slideY(begin: -0.1, end: 0, curve: Curves.easeOut),
+                                        const SizedBox(height: 24),
+                                      ] else ...[
+                                        const SizedBox(height: 40),
+                                      ],
                                       const Text(
                                         'NIM / NPP',
                                         style: TextStyle(
@@ -491,6 +526,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                               ),
                                             ),
                                           ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      const Divider(color: AppTheme.slate200),
+                                      const SizedBox(height: 24),
+                                      SizedBox(
+                                        height: 48,
+                                        child: OutlinedButton.icon(
+                                          onPressed: () {
+                                            if (!mounted) return;
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: const Text('Fitur unduh aplikasi sedang dalam pengembangan.'),
+                                                backgroundColor: AppTheme.slate800,
+                                                behavior: SnackBarBehavior.floating,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                margin: const EdgeInsets.all(16),
+                                              ),
+                                            );
+                                          },
+                                          icon: const Icon(Icons.android, color: Colors.green),
+                                          label: const Text(
+                                            'Unduh Aplikasi Android',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.slate700,
+                                            ),
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            side: const BorderSide(color: AppTheme.slate300),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],

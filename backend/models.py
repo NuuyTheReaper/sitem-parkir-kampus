@@ -87,10 +87,20 @@ class Vehicle(Base):
     plat_nomor = Column(String(20), index=True, nullable=False)
     merek = Column(String(50), nullable=True)
     foto_stnk = Column(String(255), nullable=True) # URL or path to STNK
+    foto_plat_nomor = Column(String(255), nullable=True) # URL or path to plate photo
     status_validasi = Column(SQLEnum(ValidationStatusEnum), default=ValidationStatusEnum.pending)
+    catatan = Column(String(255), nullable=True) # Rejection reason or notes
 
     user = relationship("User", back_populates="vehicles")
     parking_logs = relationship("ParkingLog", back_populates="vehicle")
+
+    @property
+    def user_nama(self):
+        return self.user.nama if self.user else None
+
+    @property
+    def user_nim(self):
+        return self.user.nim_npp if self.user else None
 
 class AccessRequestStatusEnum(str, enum.Enum):
     pending = "pending"

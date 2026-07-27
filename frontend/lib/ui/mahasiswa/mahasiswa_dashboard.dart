@@ -778,6 +778,55 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
     }
   }
 
+  Future<void> _uploadPlat(int vehicleId) async {
+    try {
+      final file = await pickImageFile();
+      if (file == null) return;
+
+      final extension = file.name.split('.').last.toLowerCase();
+      final mimeSubtype = extension == 'png' ? 'png' : (extension == 'webp' ? 'webp' : 'jpeg');
+
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          file.bytes, 
+          filename: file.name,
+          contentType: MediaType('image', mimeSubtype),
+        ),
+      });
+
+      await ref.read(dioProvider).post(
+            'mahasiswa/vehicles/$vehicleId/upload-plat-nomor',
+            data: formData,
+          );
+
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Foto Plat Nomor berhasil diupload! 📸'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal upload: $err'),
+          backgroundColor: AppTheme.maroon,
+        ),
+      );
+    }
+  }
+
   Future<void> _confirmDeleteVehicle(int vehicleId, String platNomor) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -1174,6 +1223,8 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
 
               final hasStnk = vehicle['foto_stnk'] != null &&
                   vehicle['foto_stnk'].toString().isNotEmpty;
+              final hasPlat = vehicle['foto_plat_nomor'] != null &&
+                  vehicle['foto_plat_nomor'].toString().isNotEmpty;
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -1271,6 +1322,30 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
                         ],
                       ),
                     ),
+                    if (status == 'ditolak' && vehicle['catatan'] != null && vehicle['catatan'].toString().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.shade100),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 16, color: Colors.red),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Alasan Penolakan: ${vehicle['catatan']}',
+                                style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     
                     // STNK Section
@@ -1331,6 +1406,73 @@ class _KendaraanTabState extends ConsumerState<KendaraanTab> {
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               onPressed: () => _uploadStnk(vehicle['id']),
+                              child: const Text('Upload',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Plat Nomor Section
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: hasPlat ? const Color(0xFFF0FDF4) : const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: hasPlat ? const Color(0xFFBBF7D0) : const Color(0xFFFED7AA),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            hasPlat
+                                ? Icons.check_circle_rounded
+                                : Icons.upload_file_outlined,
+                            size: 20,
+                            color: hasPlat ? const Color(0xFF16A34A) : const Color(0xFFF59E0B),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              hasPlat
+                                  ? 'Foto Plat Nomor telah diupload'
+                                  : 'Upload Foto Plat Nomor',
+                              style: TextStyle(
+                                color: hasPlat
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFF59E0B),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (hasPlat)
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF16A34A),
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => showPhotoDialog(
+                                  context, vehicle['foto_plat_nomor'], title: 'Foto Plat Nomor'),
+                              child: const Text('Lihat',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          if (!hasPlat)
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFFF59E0B),
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => _uploadPlat(vehicle['id']),
                               child: const Text('Upload',
                                   style: TextStyle(
                                       fontSize: 13,

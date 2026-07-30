@@ -371,8 +371,12 @@ class _StatusTabState extends ConsumerState<StatusTab> {
       }
     } catch (e) {
       if (mounted) {
+        String errMsg = e.toString();
+        if (e is DioException && e.response?.data != null) {
+          errMsg = e.response!.data['detail'] ?? errMsg;
+        }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Gagal: $e'),
+          content: Text('Gagal: $errMsg'),
           backgroundColor: AppTheme.maroon,
           behavior: SnackBarBehavior.floating,
           shape:

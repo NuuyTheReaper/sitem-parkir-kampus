@@ -24,4 +24,14 @@ class PwaInstaller {
       debugPrint('Failed to prompt install: $e');
     }
   }
+
+  /// Downloads the APK file hosted on the server
+  static void downloadApk() {
+    if (!kIsWeb) return;
+    try {
+      js_util.callMethod(js_util.globalThis, 'open', ['/app.apk', '_blank']);
+    } catch (e) {
+      debugPrint('Failed to download APK: $e');
+    }
+  }
 }

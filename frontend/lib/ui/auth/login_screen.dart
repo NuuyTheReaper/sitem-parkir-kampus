@@ -6,6 +6,7 @@ import '../../core/app_theme.dart';
 import '../admin/admin_dashboard.dart';
 import '../mahasiswa/mahasiswa_dashboard.dart';
 import '../petugas/petugas_dashboard.dart';
+import '../../core/pwa_installer.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -535,16 +536,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         height: 48,
                                         child: OutlinedButton.icon(
                                           onPressed: () {
-                                            if (!mounted) return;
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: const Text('Fitur unduh aplikasi sedang dalam pengembangan.'),
-                                                backgroundColor: AppTheme.slate800,
-                                                behavior: SnackBarBehavior.floating,
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                margin: const EdgeInsets.all(16),
-                                              ),
-                                            );
+                                            PwaInstaller.downloadApk();
                                           },
                                           icon: const Icon(Icons.android, color: Colors.green),
                                           label: const Text(

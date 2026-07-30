@@ -78,8 +78,6 @@ app.add_middleware(
 # Serve uploaded STNK and Plat photos under /api so Nginx proxies them
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/api/uploads/stnk", StaticFiles(directory=UPLOAD_DIR), name="uploads_stnk")
-app.mount("/api/uploads/plat", StaticFiles(directory=UPLOAD_DIR), name="uploads_plat")
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.get("/health/db")

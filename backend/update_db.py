@@ -88,6 +88,12 @@ def update_database():
                 print("Added 'emergency_guest_id' to access_requests.")
             except Exception as e:
                 print(f"emergency_guest_id might already exist: {e}")
+                
+            try:
+                conn.execute(text("ALTER TABLE access_requests ADD COLUMN catatan VARCHAR(255)"))
+                print("Added 'catatan' to access_requests.")
+            except Exception as e:
+                print(f"Column 'catatan' might already exist: {e}")
         except Exception as e:
             print(f"Error modifying access_requests: {e}")
 

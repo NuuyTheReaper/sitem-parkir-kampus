@@ -29,7 +29,16 @@ class PwaInstaller {
   static void downloadApk() {
     if (!kIsWeb) return;
     try {
-      js_util.callMethod(js_util.globalThis, 'open', ['/app.apk', '_blank']);
+      final document = js_util.getProperty(js_util.globalThis, 'document');
+      final anchor = js_util.callMethod(document, 'createElement', ['a']);
+      js_util.setProperty(anchor, 'href', 'app.apk');
+      js_util.setProperty(anchor, 'download', 'app.apk');
+      js_util.setProperty(anchor, 'target', '_blank');
+      
+      final body = js_util.getProperty(document, 'body');
+      js_util.callMethod(body, 'appendChild', [anchor]);
+      js_util.callMethod(anchor, 'click', []);
+      js_util.callMethod(body, 'removeChild', [anchor]);
     } catch (e) {
       debugPrint('Failed to download APK: $e');
     }

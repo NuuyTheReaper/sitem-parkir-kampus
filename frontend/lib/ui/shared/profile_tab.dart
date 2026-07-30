@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../core/app_theme.dart';
 import '../../core/api_client.dart';
 import '../auth/login_screen.dart';
+import '../../core/pwa_installer.dart';
 
 class ProfileTab extends ConsumerStatefulWidget {
   const ProfileTab({super.key});
@@ -294,6 +295,19 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                   ),
 
                   // Menu list actions berbentuk capsule murni
+                  if (PwaInstaller.canInstall)
+                    _buildMenuTile(
+                      icon: Icons.download_rounded,
+                      title: 'Install Aplikasi ke Perangkat',
+                      iconColor: AppTheme.maroon,
+                      onTap: () {
+                        PwaInstaller.promptInstall();
+                        // Delay sedikit lalu refresh UI agar tombol hilang jika berhasil diinstall
+                        Future.delayed(const Duration(seconds: 2), () {
+                          if (mounted) setState(() {});
+                        });
+                      },
+                    ),
                   _buildMenuTile(
                     icon: Icons.person_outline_rounded,
                     title: 'Informasi Akun',
